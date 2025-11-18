@@ -1,4 +1,7 @@
+import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:skreen_app_mobile/services/socket_service.dart';
 
 void main() {
   runApp(const MyApp());
@@ -45,10 +48,11 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
+  Uint8List? currentFrame;
 
-  void _incrementCounter() {
-    setState(() {
-    });
+  Future<void> start() async {
+    TcpFrameClient client = TcpFrameClient();
+    client.connect();
   }
 
   @override
@@ -62,7 +66,12 @@ class _MyHomePageState extends State<MyHomePage> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: <Widget>[
-            const Text('Sckreen app'),
+            ElevatedButton(
+              onPressed: () {
+                start();
+              },
+              child: Text("Inciar"),
+            )
           ],
         ),
       ),
