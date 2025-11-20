@@ -40,6 +40,7 @@ class _MyHomePageState extends State<MyHomePage> {
   bool isConnected = false;
   StreamSubscription? frameSub;
   ui.Image? uiImage;
+  bool isProcessing = false;
 
   @override
   void dispose() {
@@ -57,15 +58,14 @@ class _MyHomePageState extends State<MyHomePage> {
       isConnected = true;
     });
 
-    // Suscribirse al stream de frames sin bloquear
+    // Suscribirse al stream de frames
     frameSub = client!.frames.listen(
       (frame) {
         if (!mounted) return;
-
         _processFrame(frame);
       },
       onError: (error) {
-        print("Error recibiendo frames: $error");
+        print("❌ Error recibiendo frames: $error");
         if (mounted) {
           setState(() {
             isConnected = false;
@@ -74,7 +74,7 @@ class _MyHomePageState extends State<MyHomePage> {
         }
       },
       onDone: () {
-        print("Conexión cerrada");
+        print("🔌 Conexión cerrada");
         if (mounted) {
           setState(() {
             isConnected = false;
@@ -85,44 +85,57 @@ class _MyHomePageState extends State<MyHomePage> {
     );
   }
 
-  void _processFrame(ImageFrame frame) {
-    final rgba = convertBGRAtoRGBA(frame.bgra);
+  void _processFrame(ImageFrame frame) async {
+    if (isProcessing) return;
+    isProcessing = true;
 
-    try {
-      ui.decodeImageFromPixels(
-        rgba,
-        frame.width,
-        frame.height,
-        ui.PixelFormat.rgba8888,
-        (image) {
-          if (!mounted) {
-            image.dispose();
-            return;
-          }
+    print("🎨 Procesando frame ${frame.width}x${frame.height}, ${frame.rgb.length} bytes");
 
-          uiImage?.dispose();
-          setState(() {
-            uiImage = image;
-            frameWidth = frame.width;
-            frameHeight = frame.height;
-          });
-        },
-      );
-    } catch (e) {
-      print("Error procesando frame: $e");
-    }
+    // Convertir RGB a RGBA (agregar canal alpha)
+    final rgba = convertRGBtoRGBA(frame.rgb);
+
+    ui.decodeImageFromPixels(
+      rgba,
+      frame.width,
+      frame.height,
+      ui.PixelFormat.rgba8888,
+      (image) {
+        if (!mounted) {
+          image.dispose();
+          return;
+        }
+
+        print("✅ Frame decodificado: ${image.width}x${image.height}");
+
+        uiImage?.dispose();
+        setState(() {
+          uiImage = image;
+          frameWidth = frame.width;
+          frameHeight = frame.height;
+        });
+
+        Future.delayed(const Duration(milliseconds: 33), () {
+          isProcessing = false;
+        });
+      },
+    );
   }
 
-  // Convierte BGRA a RGBA (o simplemente retorna como está si ya es RGBA)
-  Uint8List convertBGRAtoRGBA(Uint8List bgra) {
-    final rgba = Uint8List(bgra.length);
-    for (int i = 0; i < bgra.length; i += 4) {
-      // BGRA -> RGBA: intercambia B y R
-      rgba[i] = bgra[i + 2];     // R (posición 0)
-      rgba[i + 1] = bgra[i + 1]; // G (posición 1)
-      rgba[i + 2] = bgra[i];     // B (posición 2)
-      rgba[i + 3] = bgra[i + 3]; // A (posición 3)
+  // Convierte RGB (3 bytes) a RGBA (4 bytes)
+  Uint8List convertRGBtoRGBA(Uint8List rgb) {
+    final pixelCount = rgb.length ~/ 3;
+    final rgba = Uint8List(pixelCount * 4);
+    
+    for (int i = 0; i < pixelCount; i++) {
+      final rgbIndex = i * 3;
+      final rgbaIndex = i * 4;
+      
+      rgba[rgbaIndex] = rgb[rgbIndex];         // R
+      rgba[rgbaIndex + 1] = rgb[rgbIndex + 1]; // G
+      rgba[rgbaIndex + 2] = rgb[rgbIndex + 2]; // B
+      rgba[rgbaIndex + 3] = 255;               // A (opaco)
     }
+    
     return rgba;
   }
 
@@ -142,14 +155,18 @@ class _MyHomePageState extends State<MyHomePage> {
                 onPressed: () {
                   start();
                 },
-                child: const Text("Iniciar"),
+                child: const Text("Iniciar Conexión"),
               )
             else if (uiImage != null && frameWidth != null && frameHeight != null)
-              Container(
-                color: Colors.black,
-                child: RawImage(
-                  image: uiImage,
-                  fit: BoxFit.contain,
+              Expanded(
+                child: Container(
+                  color: Colors.black,
+                  child: Center(
+                    child: RawImage(
+                      image: uiImage,
+                      fit: BoxFit.contain,
+                    ),
+                  ),
                 ),
               )
             else
@@ -163,7 +180,7 @@ class _MyHomePageState extends State<MyHomePage> {
               ),
             if (isConnected)
               Padding(
-                padding: const EdgeInsets.only(top: 20),
+                padding: const EdgeInsets.only(top: 20, bottom: 20),
                 child: ElevatedButton(
                   onPressed: () {
                     frameSub?.cancel();
@@ -174,6 +191,10 @@ class _MyHomePageState extends State<MyHomePage> {
                       uiImage = null;
                     });
                   },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.red,
+                    foregroundColor: Colors.white,
+                  ),
                   child: const Text("Detener"),
                 ),
               ),
