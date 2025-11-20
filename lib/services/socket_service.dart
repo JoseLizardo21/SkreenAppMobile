@@ -21,27 +21,21 @@ class TcpFrameClient {
         final header = ByteData.sublistView(bytes, 0, 12);
 
         // Leer header (big-endian porque usamos htonl en C++)
-        final dataSize = header.getUint32(0, Endian.big);
+        final jpegSize = header.getUint32(0, Endian.big);
         final width = header.getUint32(4, Endian.big);
         final height = header.getUint32(8, Endian.big);
 
-        print("🖼️ Header: ${width}x${height}, data: $dataSize bytes");
+        print("🖼️ Header: ${width}x${height}, JPEG: $jpegSize bytes");
 
         // Verificar que tenemos todo el frame
-        final totalSize = 12 + dataSize;
+        final totalSize = 12 + jpegSize;
         if (buffer.length < totalSize) {
           print("⏳ Esperando más datos... tengo ${buffer.length}/$totalSize");
           break;
         }
 
-        // Extraer pixels RGB
-        final rgbPixels = Uint8List.fromList(bytes.sublist(12, totalSize));
-
-        // Validar tamaño esperado (RGB = 3 bytes por pixel)
-        final expectedSize = width * height * 3;
-        if (dataSize != expectedSize) {
-          print("⚠️ Warning: tamaño inesperado. Esperado: $expectedSize, recibido: $dataSize");
-        }
+        // Extraer datos JPEG comprimidos
+        final jpegData = Uint8List.fromList(bytes.sublist(12, totalSize));
 
         // Limpiar buffer
         buffer.clear();
@@ -49,7 +43,8 @@ class TcpFrameClient {
           buffer.add(bytes.sublist(totalSize));
         }
 
-        yield ImageFrame(width, height, rgbPixels);
+        print("✅ Frame JPEG extraído, enviando al procesador");
+        yield ImageFrame(width, height, jpegData);
       }
     }
   }
@@ -58,7 +53,7 @@ class TcpFrameClient {
 class ImageFrame {
   final int width;
   final int height;
-  final Uint8List rgb;  // Cambiado de 'bgra' a 'rgb'
+  final Uint8List jpegData;  // Datos JPEG comprimidos
 
-  ImageFrame(this.width, this.height, this.rgb);
+  ImageFrame(this.width, this.height, this.jpegData);
 }

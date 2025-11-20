@@ -1,11 +1,19 @@
 import 'dart:async';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:skreen_app_mobile/services/socket_service.dart';
 
 void main() {
   runApp(const MyApp());
+}
+
+// Decodificar JPEG en el hilo principal (no se puede hacer en isolate)
+Future<ui.Image> _decodeJpeg(Uint8List jpegData) async {
+  final codec = await ui.instantiateImageCodec(jpegData);
+  final frame = await codec.getNextFrame();
+  return frame.image;
 }
 
 class MyApp extends StatelessWidget {
@@ -34,13 +42,15 @@ class MyHomePage extends StatefulWidget {
 
 class _MyHomePageState extends State<MyHomePage> {
   TcpFrameClient? client;
-  Uint8List? currentFrame;
   int? frameWidth;
   int? frameHeight;
   bool isConnected = false;
   StreamSubscription? frameSub;
   ui.Image? uiImage;
-  bool isProcessing = false;
+
+  // Cola de frames para evitar descartar frames
+  final List<ImageFrame> _frameQueue = [];
+  bool _isDecodingFrame = false;
 
   @override
   void dispose() {
@@ -62,14 +72,13 @@ class _MyHomePageState extends State<MyHomePage> {
     frameSub = client!.frames.listen(
       (frame) {
         if (!mounted) return;
-        _processFrame(frame);
+        _enqueueFrame(frame);
       },
       onError: (error) {
         print("❌ Error recibiendo frames: $error");
         if (mounted) {
           setState(() {
             isConnected = false;
-            currentFrame = null;
           });
         }
       },
@@ -78,65 +87,65 @@ class _MyHomePageState extends State<MyHomePage> {
         if (mounted) {
           setState(() {
             isConnected = false;
-            currentFrame = null;
           });
         }
       },
     );
   }
 
-  void _processFrame(ImageFrame frame) async {
-    if (isProcessing) return;
-    isProcessing = true;
+  void _enqueueFrame(ImageFrame frame) {
+    // Si la cola está muy llena, descartar el frame más antiguo
+    // (el cliente está generando frames más rápido de lo que podemos mostrar)
+    if (_frameQueue.length > 2) {
+      _frameQueue.removeAt(0);
+      print("⚠️ Descartado frame por cola llena");
+    }
 
-    print("🎨 Procesando frame ${frame.width}x${frame.height}, ${frame.rgb.length} bytes");
+    // Añadir frame a la cola
+    _frameQueue.add(frame);
+    print("📥 Frame encolado (cola: ${_frameQueue.length})");
 
-    // Convertir RGB a RGBA (agregar canal alpha)
-    final rgba = convertRGBtoRGBA(frame.rgb);
-
-    ui.decodeImageFromPixels(
-      rgba,
-      frame.width,
-      frame.height,
-      ui.PixelFormat.rgba8888,
-      (image) {
-        if (!mounted) {
-          image.dispose();
-          return;
-        }
-
-        print("✅ Frame decodificado: ${image.width}x${image.height}");
-
-        uiImage?.dispose();
-        setState(() {
-          uiImage = image;
-          frameWidth = frame.width;
-          frameHeight = frame.height;
-        });
-
-        Future.delayed(const Duration(milliseconds: 33), () {
-          isProcessing = false;
-        });
-      },
-    );
+    // Si no estamos decodificando, procesar el siguiente frame
+    if (!_isDecodingFrame) {
+      _processNextFrame();
+    }
   }
 
-  // Convierte RGB (3 bytes) a RGBA (4 bytes)
-  Uint8List convertRGBtoRGBA(Uint8List rgb) {
-    final pixelCount = rgb.length ~/ 3;
-    final rgba = Uint8List(pixelCount * 4);
-    
-    for (int i = 0; i < pixelCount; i++) {
-      final rgbIndex = i * 3;
-      final rgbaIndex = i * 4;
-      
-      rgba[rgbaIndex] = rgb[rgbIndex];         // R
-      rgba[rgbaIndex + 1] = rgb[rgbIndex + 1]; // G
-      rgba[rgbaIndex + 2] = rgb[rgbIndex + 2]; // B
-      rgba[rgbaIndex + 3] = 255;               // A (opaco)
+  void _processNextFrame() async {
+    if (_frameQueue.isEmpty || _isDecodingFrame) return;
+
+    _isDecodingFrame = true;
+    final frame = _frameQueue.removeAt(0);
+
+    print("🎨 Procesando frame ${frame.width}x${frame.height}, ${frame.jpegData.length} bytes JPEG (cola: ${_frameQueue.length})");
+
+    try {
+      // Decodificar JPEG (debe ser en el hilo principal, Flutter no lo permite en isolates)
+      final decodedImage = await _decodeJpeg(frame.jpegData);
+
+      if (!mounted) {
+        decodedImage.dispose();
+        _isDecodingFrame = false;
+        _processNextFrame();
+        return;
+      }
+
+      print("✅ Frame decodificado: ${decodedImage.width}x${decodedImage.height}");
+
+      uiImage?.dispose();
+      setState(() {
+        uiImage = decodedImage;
+        frameWidth = frame.width;
+        frameHeight = frame.height;
+      });
+
+      _isDecodingFrame = false;
+      _processNextFrame();
+    } catch (e) {
+      print("❌ Error procesando frame: $e");
+      _isDecodingFrame = false;
+      _processNextFrame();
     }
-    
-    return rgba;
   }
 
   @override
@@ -187,7 +196,6 @@ class _MyHomePageState extends State<MyHomePage> {
                     client?.socket?.destroy();
                     setState(() {
                       isConnected = false;
-                      currentFrame = null;
                       uiImage = null;
                     });
                   },
