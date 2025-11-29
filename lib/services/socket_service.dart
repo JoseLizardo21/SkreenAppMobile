@@ -1,7 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
-import 'dart:ui' as ui;
+
+import 'package:skreen_app_mobile/helpers/screen_info_helper.dart';
 
 class TcpFrameClient {
   Socket? socket;
@@ -23,10 +24,10 @@ class TcpFrameClient {
     try {
       final String deviceName = Platform.localHostname;
 
-      // Obtener resolución FÍSICA real (en píxeles físicos)
-      final ui.Size physicalSize = ui.window.physicalSize;
-      final int screenWidth = physicalSize.width.toInt();
-      final int screenHeight = physicalSize.height.toInt();
+    // Obtener resolución REAL de pantalla (incluyendo barras del sistema)
+    final screenResolution = await ScreenInfoHelper.getRealScreenResolution();
+    final int screenWidth = screenResolution['width']!;
+    final int screenHeight = screenResolution['height']!;
 
       print("🖥️  Enviando info al servidor: $deviceName ${screenWidth}x${screenHeight}");
 
