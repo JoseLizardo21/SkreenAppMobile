@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:skreen_app_mobile/services/socket_service.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 
 void main() {
   runApp(const MyApp());
@@ -51,6 +52,23 @@ class _MyHomePageState extends State<MyHomePage> {
   // Cola de frames para evitar descartar frames
   final List<ImageFrame> _frameQueue = [];
   bool _isDecodingFrame = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (!kIsWeb) {
+      _enableWakelock();
+    }
+  }
+
+  /// Method to enable Wakelock after Flutter initialization
+  Future<void> _enableWakelock() async {
+    try {
+      await WakelockPlus.enable();
+    } catch (e) {
+      print('Error enabling Wakelock: $e');
+    }
+  }
 
   @override
   void dispose() {
