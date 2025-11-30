@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:skreen_app_mobile/services/socket_service.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
@@ -56,6 +57,7 @@ class _MyHomePageState extends State<MyHomePage> {
   @override
   void initState() {
     super.initState();
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     if (!kIsWeb) {
       _enableWakelock();
     }
@@ -169,63 +171,45 @@ class _MyHomePageState extends State<MyHomePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        title: Text(widget.title),
-      ),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            if (!isConnected)
-              ElevatedButton(
+      backgroundColor: Colors.black,
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          // RawImage a pantalla completa
+          if (uiImage != null && frameWidth != null && frameHeight != null)
+            RawImage(
+              image: uiImage,
+              fit: BoxFit.cover,
+            )
+          else
+            Container(color: Colors.black),
+
+          // Botón de conexión (esquina superior izquierda)
+          if (!isConnected)
+            Center(
+              child: ElevatedButton(
                 onPressed: () {
                   start();
                 },
                 child: const Text("Iniciar Conexión"),
-              )
-            else if (uiImage != null && frameWidth != null && frameHeight != null)
-              Expanded(
-                child: Container(
-                  color: Colors.black,
-                  child: Center(
-                    child: RawImage(
-                      image: uiImage,
-                      fit: BoxFit.contain,
-                    ),
-                  ),
-                ),
-              )
-            else
-              const Column(
+              ),
+            )
+          // Loading mientras se conecta
+          else if (uiImage == null)
+            Center(
+              child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
-                children: [
+                children: const [
                   CircularProgressIndicator(),
                   SizedBox(height: 16),
-                  Text("Esperando frames..."),
+                  Text(
+                    "Esperando frames...",
+                    style: TextStyle(color: Colors.white),
+                  ),
                 ],
               ),
-            if (isConnected)
-              Padding(
-                padding: const EdgeInsets.only(top: 20, bottom: 20),
-                child: ElevatedButton(
-                  onPressed: () {
-                    frameSub?.cancel();
-                    client?.socket?.destroy();
-                    setState(() {
-                      isConnected = false;
-                      uiImage = null;
-                    });
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.red,
-                    foregroundColor: Colors.white,
-                  ),
-                  child: const Text("Detener"),
-                ),
-              ),
-          ],
-        ),
+            ),
+        ],
       ),
     );
   }
