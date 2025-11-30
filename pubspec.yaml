@@ -37,6 +37,7 @@ dependencies:
   internal_http_server: ^0.0.4
   flutter_lock_task: ^0.0.2
   wakelock_plus: ^1.4.0
+  web_socket_channel: ^2.4.0
 
 dev_dependencies:
   flutter_test:

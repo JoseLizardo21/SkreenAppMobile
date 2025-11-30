@@ -4,19 +4,13 @@ import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:skreen_app_mobile/services/socket_service.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
+import 'services/websocket_service.dart';
 
 void main() {
   runApp(const MyApp());
 }
 
-// Decodificar JPEG en el hilo principal (no se puede hacer en isolate)
-Future<ui.Image> _decodeJpeg(Uint8List jpegData) async {
-  final codec = await ui.instantiateImageCodec(jpegData);
-  final frame = await codec.getNextFrame();
-  return frame.image;
-}
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
@@ -43,16 +37,9 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
-  TcpFrameClient? client;
-  int? frameWidth;
-  int? frameHeight;
-  bool isConnected = false;
-  StreamSubscription? frameSub;
-  ui.Image? uiImage;
-
-  // Cola de frames para evitar descartar frames
-  final List<ImageFrame> _frameQueue = [];
-  bool _isDecodingFrame = false;
+  final WebSocketService _wsService = WebSocketService();
+  bool _isConnected = false;
+  String _status = 'Desconectado';
 
   @override
   void initState() {
@@ -72,144 +59,91 @@ class _MyHomePageState extends State<MyHomePage> {
     }
   }
 
-  @override
-  void dispose() {
-    frameSub?.cancel();
-    client?.socket?.close();
-    uiImage?.dispose();
-    super.dispose();
-  }
-
-  Future<void> start() async {
-    client = TcpFrameClient();
-    await client!.connect();
-
-    setState(() {
-      isConnected = true;
-    });
-
-    // Suscribirse al stream de frames
-    frameSub = client!.frames.listen(
-      (frame) {
-        if (!mounted) return;
-        _enqueueFrame(frame);
-      },
-      onError: (error) {
-        print("❌ Error recibiendo frames: $error");
-        if (mounted) {
-          setState(() {
-            isConnected = false;
-          });
-        }
-      },
-      onDone: () {
-        print("🔌 Conexión cerrada");
-        if (mounted) {
-          setState(() {
-            isConnected = false;
-          });
-        }
-      },
-    );
-  }
-
-  void _enqueueFrame(ImageFrame frame) {
-    // Si la cola está muy llena, descartar el frame más antiguo
-    // (el cliente está generando frames más rápido de lo que podemos mostrar)
-    if (_frameQueue.length > 2) {
-      _frameQueue.removeAt(0);
-      print("⚠️ Descartado frame por cola llena");
-    }
-
-    // Añadir frame a la cola
-    _frameQueue.add(frame);
-    print("📥 Frame encolado (cola: ${_frameQueue.length})");
-
-    // Si no estamos decodificando, procesar el siguiente frame
-    if (!_isDecodingFrame) {
-      _processNextFrame();
-    }
-  }
-
-  void _processNextFrame() async {
-    if (_frameQueue.isEmpty || _isDecodingFrame) return;
-
-    _isDecodingFrame = true;
-    final frame = _frameQueue.removeAt(0);
-
-    print("🎨 Procesando frame ${frame.width}x${frame.height}, ${frame.jpegData.length} bytes JPEG (cola: ${_frameQueue.length})");
-
+  Future<void> _connectAndRegister() async {
     try {
-      // Decodificar JPEG (debe ser en el hilo principal, Flutter no lo permite en isolates)
-      final decodedImage = await _decodeJpeg(frame.jpegData);
+      // Conectar al servidor WebSocket
+      await _wsService.connect('ws://10.28.10.60:9001');
+      // Registrarse como cliente Flutter
+      await _wsService.registerAsFlutter();
 
-      if (!mounted) {
-        decodedImage.dispose();
-        _isDecodingFrame = false;
-        _processNextFrame();
-        return;
-      }
-
-      print("✅ Frame decodificado: ${decodedImage.width}x${decodedImage.height}");
-
-      uiImage?.dispose();
       setState(() {
-        uiImage = decodedImage;
-        frameWidth = frame.width;
-        frameHeight = frame.height;
+        _isConnected = true;
+        _status = 'Conectado';
       });
 
-      _isDecodingFrame = false;
-      _processNextFrame();
+      // Escuchar mensajes del servidor
+      _wsService.messageStream.listen(
+        (message) {
+          print('Mensaje recibido: $message');
+        },
+        onError: (error) {
+          print('Error en WebSocket: $error');
+          setState(() {
+            _isConnected = false;
+            _status = 'Error de conexión';
+          });
+        },
+        onDone: () {
+          print('Conexión cerrada');
+          setState(() {
+            _isConnected = false;
+            _status = 'Desconectado';
+          });
+        },
+      );
     } catch (e) {
-      print("❌ Error procesando frame: $e");
-      _isDecodingFrame = false;
-      _processNextFrame();
+      print('Error: $e');
+      setState(() {
+        _status = 'Error: $e';
+      });
     }
+  }
+
+  Future<void> _disconnect() async {
+    await _wsService.disconnect();
+    setState(() {
+      _isConnected = false;
+      _status = 'Desconectado';
+    });
+  }
+
+  @override
+  void dispose() {
+    _wsService.disconnect();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
-      body: Stack(
-        fit: StackFit.expand,
-        children: [
-          // RawImage a pantalla completa
-          if (uiImage != null && frameWidth != null && frameHeight != null)
-            RawImage(
-              image: uiImage,
-              fit: BoxFit.cover,
-            )
-          else
-            Container(color: Colors.black),
-
-          // Botón de conexión (esquina superior izquierda)
-          if (!isConnected)
-            Center(
-              child: ElevatedButton(
-                onPressed: () {
-                  start();
-                },
-                child: const Text("Iniciar Conexión"),
-              ),
-            )
-          // Loading mientras se conecta
-          else if (uiImage == null)
-            Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: const [
-                  CircularProgressIndicator(),
-                  SizedBox(height: 16),
-                  Text(
-                    "Esperando frames...",
-                    style: TextStyle(color: Colors.white),
-                  ),
-                ],
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              'Estado: $_status',
+              style: TextStyle(
+                color: _isConnected ? Colors.green : Colors.red,
+                fontSize: 20,
               ),
             ),
-        ],
+            SizedBox(height: 30),
+            ElevatedButton(
+              onPressed: _isConnected ? _disconnect : _connectAndRegister,
+              child: Text(_isConnected ? 'Desconectar' : 'Conectar'),
+            ),
+            if (_isConnected) ...[
+              SizedBox(height: 20),
+              ElevatedButton(
+                onPressed: () {
+                  _wsService.sendMessage('Datos de prueba desde Flutter');
+                },
+                child: Text('Enviar mensaje'),
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }
