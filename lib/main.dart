@@ -1,6 +1,4 @@
 import 'dart:async';
-import 'dart:typed_data';
-import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -40,6 +38,7 @@ class _MyHomePageState extends State<MyHomePage> {
   final WebSocketService _wsService = WebSocketService();
   bool _isConnected = false;
   String _status = 'Desconectado';
+  final TextEditingController _ipController = TextEditingController();
 
   @override
   void initState() {
@@ -62,7 +61,7 @@ class _MyHomePageState extends State<MyHomePage> {
   Future<void> _connectAndRegister() async {
     try {
       // Conectar al servidor WebSocket
-      await _wsService.connect('ws://10.28.10.60:9001');
+      await _wsService.connect('ws://${_ipController.text}:9001');
       // Registrarse como cliente Flutter
       await _wsService.registerAsFlutter();
 
@@ -116,8 +115,7 @@ class _MyHomePageState extends State<MyHomePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black,
-      body: Center(
+      body: Center( 
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
@@ -129,6 +127,18 @@ class _MyHomePageState extends State<MyHomePage> {
               ),
             ),
             SizedBox(height: 30),
+            if(!_isConnected)
+            Container(
+              width: 500,
+              margin: EdgeInsets.only(bottom: 20),
+              child: TextField(
+                controller: _ipController,
+                decoration: InputDecoration(
+                  labelText: 'Dirección IP del servidor',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ),
             ElevatedButton(
               onPressed: _isConnected ? _disconnect : _connectAndRegister,
               child: Text(_isConnected ? 'Desconectar' : 'Conectar'),
