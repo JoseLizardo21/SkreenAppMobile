@@ -44,7 +44,7 @@ class _MyHomePageState extends State<MyHomePage> {
   @override
   void initState() {
     super.initState();
-    _ipController.text = '192.168.1.40';
+    _ipController.text = '10.28.10.60';
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     if (!kIsWeb) {
       _enableWakelock();
@@ -156,6 +156,7 @@ class _MyHomePageState extends State<MyHomePage> {
                   final int screenHeight = screenResolution['height']!;
                   final jsonString = jsonEncode({
                     'type': 'screen_info',
+                    'device_name': 'Tablet test',
                     'width': screenWidth,
                     'height': screenHeight,
                   });
