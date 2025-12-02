@@ -44,7 +44,7 @@ class _MyHomePageState extends State<MyHomePage> {
   @override
   void initState() {
     super.initState();
-    _ipController.text = '10.28.10.60';
+    _ipController.text = '192.168.1.40';
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     if (!kIsWeb) {
       _enableWakelock();
