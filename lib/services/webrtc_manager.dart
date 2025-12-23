@@ -58,12 +58,26 @@ class WebRTCManager {
 
     // Cuando se recibe video remoto
     _peerConnection!.onTrack = (RTCTrackEvent event) {
-      print('📹 Stream de video recibido');
+      print('📹 ========== onTrack DISPARADO ==========');
+      print('📹 Track recibido - kind: ${event.track.kind}');
+      print('📹 Track ID: ${event.track.id}');
+      print('📹 Track enabled: ${event.track.enabled}');
+      print('📹 Número de streams: ${event.streams.length}');
+
       if (event.streams.isNotEmpty) {
+        print('📹 Stream ID: ${event.streams[0].id}');
+        print('📹 Tracks en el stream: ${event.streams[0].getTracks().length}');
+
         remoteRenderer.srcObject = event.streams[0];
         isConnected = true;
+
+        print('✅ srcObject asignado al renderer');
+        print('✅ Llamando a onVideoStarted callback...');
         onVideoStarted?.call();
+      } else {
+        print('⚠️ No hay streams en el evento!');
       }
+      print('📹 ========== onTrack FINALIZADO ==========');
     };
 
     // Cuando se genera un ICE candidate local
@@ -103,16 +117,26 @@ class WebRTCManager {
   // ========== Manejo de señalización remota ==========
 
   Future<void> _handleRemoteSDP(String type, String sdp) async {
-    print('📥 Procesando $type remoto...');
+    print('📥 ========== Procesando SDP $type ==========');
+    print('📥 SDP length: ${sdp.length} caracteres');
 
     try {
       if (type == 'offer') {
+        print('📥 Recibido OFFER del servidor');
+
         // Establecer descripción remota
         await _peerConnection!.setRemoteDescription(
           RTCSessionDescription(sdp, 'offer'),
         );
 
         print('✅ Remote description establecida');
+
+        // Verificar transceivers
+        final transceivers = await _peerConnection!.getTransceivers();
+        print('📡 Número de transceivers: ${transceivers.length}');
+        for (var transceiver in transceivers) {
+          print('   - Tipo: ${transceiver.receiver.track?.kind}');
+        }
 
         // Crear respuesta
         RTCSessionDescription answer = await _peerConnection!.createAnswer();
@@ -121,17 +145,20 @@ class WebRTCManager {
         await _peerConnection!.setLocalDescription(answer);
 
         print('✅ Local description establecida');
+        print('📤 Answer SDP length: ${answer.sdp!.length} caracteres');
 
         // Enviar respuesta
         _wsService.sendSDP('answer', answer.sdp!);
 
-        print('📤 Answer enviado');
+        print('📤 Answer enviado al servidor');
       } else if (type == 'answer') {
+        print('📥 Recibido ANSWER del servidor');
         await _peerConnection!.setRemoteDescription(
           RTCSessionDescription(sdp, 'answer'),
         );
         print('✅ Answer procesado');
       }
+      print('========== SDP Procesado Exitosamente ==========');
     } catch (e) {
       print('❌ Error procesando SDP: $e');
       onError?.call('Error procesando SDP: $e');

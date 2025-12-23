@@ -4,7 +4,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
-import 'package:skreen_app_mobile/helpers/screen_info_helper.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import 'services/websocket_service.dart';
 import 'services/webrtc_manager.dart';
