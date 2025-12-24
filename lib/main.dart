@@ -49,12 +49,18 @@ class _MyHomePageState extends State<MyHomePage> {
   @override
   void initState() {
     super.initState();
-    _ipController.text = '192.168.1.40';
+
+    _ipController.text = '10.86.5.97';
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+
     if (!kIsWeb) {
       _enableWakelock();
     }
-    _initializeWebRTC();
+
+    // ⬇️ MUY IMPORTANTE
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _initializeWebRTC();
+    });
   }
 
   Future<void> _enableWakelock() async {
