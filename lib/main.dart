@@ -50,7 +50,7 @@ class _MyHomePageState extends State<MyHomePage> {
   void initState() {
     super.initState();
 
-    _ipController.text = '10.86.5.97';
+    _ipController.text = '10.120.225.97';
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
 
     if (!kIsWeb) {
