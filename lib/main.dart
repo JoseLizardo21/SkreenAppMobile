@@ -152,6 +152,8 @@ class _MyHomePageState extends State<MyHomePage> {
 
   Future<void> _disconnect() async {
     await _wsService.disconnect();
+    // Reinicializar WebRTC para la próxima conexión
+    await _webrtcManager.reset();
     setState(() {
       _isConnected = false;
       _isVideoPlaying = false;

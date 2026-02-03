@@ -1,6 +1,7 @@
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:web_socket_channel/status.dart' as status;
 import 'dart:convert';
+import 'dart:async';
 
 class WebSocketService {
   static final WebSocketService _instance = WebSocketService._internal();
@@ -8,6 +9,7 @@ class WebSocketService {
   WebSocketChannel? _channel;
   String? _serverUrl;
   bool _isConnected = false;
+  StreamSubscription? _streamSubscription;
 
   // ========== NUEVO: Callbacks para WebRTC ==========
   Function(String type, String sdp)? onSDPReceived;
@@ -24,13 +26,17 @@ class WebSocketService {
 
   Future<void> connect(String url) async {
     try {
+      // Cancelar suscripción anterior si existe
+      await _streamSubscription?.cancel();
+      _streamSubscription = null;
+
       _serverUrl = url;
       _channel = WebSocketChannel.connect(Uri.parse(url));
       _isConnected = true;
       print('✅ Conectado a WebSocket: $url');
 
       // ========== NUEVO: Procesar mensajes WebRTC ==========
-      _channel!.stream.listen(
+      _streamSubscription = _channel!.stream.listen(
         _handleMessage,
         onError: (error) {
           print('❌ Error en WebSocket: $error');
@@ -131,6 +137,10 @@ class WebSocketService {
 
   Future<void> disconnect() async {
     if (_channel != null) {
+      // Cancelar suscripción del stream
+      await _streamSubscription?.cancel();
+      _streamSubscription = null;
+
       await _channel!.sink.close(status.goingAway);
       _isConnected = false;
       _channel = null;

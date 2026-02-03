@@ -181,7 +181,24 @@ class WebRTCManager {
     }
   }
 
-  // ========== Cleanup ==========
+  // ========== Cleanup y Reinicialización ==========
+
+  Future<void> reset() async {
+    print('🔄 Reiniciando WebRTC Manager...');
+
+    // Cerrar conexión existente si existe
+    await _peerConnection?.close();
+    _peerConnection = null;
+    isConnected = false;
+
+    // Limpiar el renderer sin hacer dispose completo
+    remoteRenderer.srcObject = null;
+
+    // Recrear peer connection
+    await _createPeerConnection();
+
+    print('✅ WebRTC Manager reiniciado');
+  }
 
   Future<void> dispose() async {
     print('🧹 Limpiando WebRTC Manager...');
