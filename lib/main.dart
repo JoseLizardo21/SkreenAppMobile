@@ -1,14 +1,9 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:media_kit/media_kit.dart';
-import 'package:media_kit_video/media_kit_video.dart';
-import 'package:media_kit/src/player/native/player/real.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  MediaKit.ensureInitialized();
   runApp(const MyApp());
 }
 
@@ -34,10 +29,9 @@ class SkreenPage extends StatefulWidget {
 }
 
 class _SkreenPageState extends State<SkreenPage> {
-  late final Player _player;
-  late final VideoController _videoController;
+  static const _decoderChannel = MethodChannel('skreen/decoder');
 
-  bool _isPlaying = false;
+  int? _textureId;
   bool _isConnected = false;
   String _status = 'Desconectado';
 
@@ -46,97 +40,41 @@ class _SkreenPageState extends State<SkreenPage> {
     super.initState();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     WakelockPlus.enable();
-
-    _player = Player(
-      configuration: const PlayerConfiguration(
-        bufferSize: 64 * 1024,
-        logLevel: MPVLogLevel.warn,
-      ),
-    );
-    _videoController = VideoController(
-      _player,
-      configuration: const VideoControllerConfiguration(
-        enableHardwareAcceleration: false,
-      ),
-    );
-
-    _player.stream.playing.listen((playing) {
-      debugPrint('[SkreenApp] playing=$playing');
-      if (mounted) setState(() {
-        _isPlaying = playing;
-        if (playing) _status = 'Transmitiendo';
-      });
-    });
-    _player.stream.error.listen((error) {
-      debugPrint('[SkreenApp] ERROR: $error');
-      if (mounted && !error.contains('force-seekable') && !error.contains('Cannot seek')) {
-        setState(() => _status = 'Error: $error');
-      }
-    });
-    _player.stream.buffering.listen((buffering) {
-      debugPrint('[SkreenApp] buffering=$buffering');
-      if (mounted && !_isPlaying) {
-        setState(() => _status = buffering ? 'Buffering...' : 'Conectando...');
-      }
-    });
-    _player.stream.log.listen((log) {
-      debugPrint('[mpv] ${log.level}: ${log.text.trim()}');
-    });
-    _player.stream.completed.listen((completed) {
-      debugPrint('[SkreenApp] completed=$completed');
-    });
   }
 
   Future<void> _connect() async {
-    debugPrint('[SkreenApp] _connect() iniciado');
     setState(() {
       _isConnected = true;
       _status = 'Conectando...';
     });
 
     try {
-      final native = _player.platform as NativePlayer;
-      await native.setProperty('load-unsafe-playlists', 'yes');
-      await native.setProperty('cache', 'no');
-      await native.setProperty('demuxer', 'lavf');
-      await native.setProperty('demuxer-lavf-format', 'mpegts');
-      await native.setProperty('demuxer-lavf-probesize', '262144');
-      await native.setProperty('demuxer-lavf-analyzeduration', '0.05');
-      await native.setProperty('network-timeout', '5');
-      await native.setProperty('force-seekable', 'yes');
-      await native.setProperty('demuxer-readahead-secs', '0.1');
-      await native.setProperty('video-latency-hacks', 'yes');
-      await native.setProperty('vd-lavc-threads', '1');
-      await native.setProperty('framedrop', 'vo');
-      await native.setProperty('correct-pts', 'no');
-      await native.setProperty('stream-buffer-size', '4096');
-      await native.setProperty('video-sync', 'desync');
-      await native.setProperty('vd-lavc-fast', 'yes');
-      await native.setProperty('ao', 'null');
-      await native.setProperty('speed', '1.0');
-      debugPrint('[SkreenApp] Propiedades mpv configuradas');
+      final textureId = await _decoderChannel.invokeMethod<int>('start');
+      setState(() {
+        _textureId = textureId;
+        _status = 'Transmitiendo';
+      });
     } catch (e) {
-      debugPrint('[SkreenApp] setProperty error: $e');
+      debugPrint('[SkreenApp] Error al iniciar decoder: $e');
+      setState(() {
+        _isConnected = false;
+        _status = 'Error: $e';
+      });
     }
-
-    debugPrint('[SkreenApp] Abriendo stream http://localhost:9002 ...');
-    await _player.open(Media('http://localhost:9002'));
-    debugPrint('[SkreenApp] player.open() completado');
   }
 
   Future<void> _disconnect() async {
-    debugPrint('[SkreenApp] _disconnect()');
-    await _player.stop();
+    await _decoderChannel.invokeMethod('stop');
     setState(() {
+      _textureId = null;
       _isConnected = false;
-      _isPlaying = false;
       _status = 'Desconectado';
     });
   }
 
   @override
   void dispose() {
-    _player.dispose();
+    _decoderChannel.invokeMethod('stop');
     super.dispose();
   }
 
@@ -146,13 +84,11 @@ class _SkreenPageState extends State<SkreenPage> {
       backgroundColor: Colors.black,
       body: Stack(
         children: [
-          // Video siempre presente con tamaño real
+          // Video via MediaCodec nativo
           Positioned.fill(
-            child: Video(
-              controller: _videoController,
-              controls: NoVideoControls,
-              fit: BoxFit.contain,
-            ),
+            child: _textureId != null
+                ? Texture(textureId: _textureId!)
+                : const SizedBox.shrink(),
           ),
 
           // Texto de estado cuando no está conectado
@@ -184,7 +120,7 @@ class _SkreenPageState extends State<SkreenPage> {
                   Container(
                     width: 10, height: 10,
                     decoration: BoxDecoration(
-                      color: _isPlaying
+                      color: _textureId != null
                           ? Colors.green
                           : (_isConnected ? Colors.orange : Colors.red),
                       shape: BoxShape.circle,
