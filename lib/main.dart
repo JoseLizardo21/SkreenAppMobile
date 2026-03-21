@@ -69,7 +69,9 @@ class _SkreenPageState extends State<SkreenPage> {
     });
     _player.stream.error.listen((error) {
       debugPrint('[SkreenApp] ERROR: $error');
-      if (mounted) setState(() => _status = 'Error: $error');
+      if (mounted && !error.contains('force-seekable') && !error.contains('Cannot seek')) {
+        setState(() => _status = 'Error: $error');
+      }
     });
     _player.stream.buffering.listen((buffering) {
       debugPrint('[SkreenApp] buffering=$buffering');
@@ -101,7 +103,8 @@ class _SkreenPageState extends State<SkreenPage> {
       await native.setProperty('demuxer-lavf-probesize', '262144');
       await native.setProperty('demuxer-lavf-analyzeduration', '0.05');
       await native.setProperty('network-timeout', '5');
-      await native.setProperty('demuxer-readahead-secs', '0');
+      await native.setProperty('force-seekable', 'yes');
+      await native.setProperty('demuxer-readahead-secs', '0.1');
       await native.setProperty('video-latency-hacks', 'yes');
       await native.setProperty('vd-lavc-threads', '1');
       await native.setProperty('framedrop', 'vo');
