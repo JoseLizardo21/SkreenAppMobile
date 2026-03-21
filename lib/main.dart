@@ -1,14 +1,14 @@
-import 'dart:async';
-import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_webrtc/flutter_webrtc.dart';
+import 'package:media_kit/media_kit.dart';
+import 'package:media_kit_video/media_kit_video.dart';
+import 'package:media_kit/src/player/native/player/real.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
-import 'services/websocket_service.dart';
-import 'services/webrtc_manager.dart';
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  MediaKit.ensureInitialized();
   runApp(const MyApp());
 }
 
@@ -20,152 +20,104 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: 'Skreen App',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
-      ),
-      home: const MyHomePage(title: 'Skreen App'),
+      theme: ThemeData(colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple)),
+      home: const SkreenPage(),
     );
   }
 }
 
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
-  final String title;
+class SkreenPage extends StatefulWidget {
+  const SkreenPage({super.key});
 
   @override
-  State<MyHomePage> createState() => _MyHomePageState();
+  State<SkreenPage> createState() => _SkreenPageState();
 }
 
-class _MyHomePageState extends State<MyHomePage> {
-  final WebSocketService _wsService = WebSocketService();
-  final WebRTCManager _webrtcManager = WebRTCManager();
+class _SkreenPageState extends State<SkreenPage> {
+  late final Player _player;
+  late final VideoController _videoController;
 
+  bool _isPlaying = false;
   bool _isConnected = false;
-  bool _isVideoPlaying = false;
   String _status = 'Desconectado';
-  String _connectionState = '';
-  final TextEditingController _ipController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
-
-    _ipController.text = '192.168.1.34';
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    WakelockPlus.enable();
 
-    if (!kIsWeb) {
-      _enableWakelock();
-    }
+    _player = Player(
+      configuration: const PlayerConfiguration(
+        bufferSize: 64 * 1024,
+        logLevel: MPVLogLevel.warn,
+      ),
+    );
+    _videoController = VideoController(_player);
 
-    // ⬇️ MUY IMPORTANTE
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _initializeWebRTC();
+    _player.stream.playing.listen((playing) {
+      debugPrint('[SkreenApp] playing=$playing');
+      if (mounted) setState(() {
+        _isPlaying = playing;
+        if (playing) _status = 'Transmitiendo';
+      });
+    });
+    _player.stream.error.listen((error) {
+      debugPrint('[SkreenApp] ERROR: $error');
+      if (mounted) setState(() => _status = 'Error: $error');
+    });
+    _player.stream.buffering.listen((buffering) {
+      debugPrint('[SkreenApp] buffering=$buffering');
+      if (mounted && !_isPlaying) {
+        setState(() => _status = buffering ? 'Buffering...' : 'Conectando...');
+      }
+    });
+    _player.stream.log.listen((log) {
+      debugPrint('[mpv] ${log.level}: ${log.text.trim()}');
+    });
+    _player.stream.completed.listen((completed) {
+      debugPrint('[SkreenApp] completed=$completed');
     });
   }
 
-  Future<void> _enableWakelock() async {
+  Future<void> _connect() async {
+    debugPrint('[SkreenApp] _connect() iniciado');
+    setState(() {
+      _isConnected = true;
+      _status = 'Conectando...';
+    });
+
     try {
-      await WakelockPlus.enable();
+      final native = _player.platform as NativePlayer;
+      await native.setProperty('cache', 'no');
+      await native.setProperty('demuxer', 'lavf');
+      await native.setProperty('demuxer-lavf-format', 'mpegts');
+      await native.setProperty('demuxer-lavf-probesize', '524288');
+      await native.setProperty('demuxer-lavf-analyzeduration', '0.5');
+      await native.setProperty('network-timeout', '5');
+      debugPrint('[SkreenApp] Propiedades mpv configuradas');
     } catch (e) {
-      print('Error enabling Wakelock: $e');
+      debugPrint('[SkreenApp] setProperty error: $e');
     }
-  }
 
-  Future<void> _initializeWebRTC() async {
-    // Configurar callbacks del WebRTC Manager
-    _webrtcManager.onVideoStarted = () {
-      setState(() {
-        _isVideoPlaying = true;
-        _status = 'Video recibido ✅';
-      });
-    };
-
-    _webrtcManager.onError = (error) {
-      setState(() {
-        _status = 'Error: $error';
-      });
-    };
-
-    _webrtcManager.onConnectionStateChanged = (state) {
-      setState(() {
-        _connectionState = state.toString().split('.').last;
-      });
-    };
-
-    // Inicializar WebRTC
-    await _webrtcManager.initialize();
-  }
-
-  Future<void> _connectAndRegister() async {
-    try {
-      setState(() {
-        _status = 'Conectando...';
-      });
-
-      // Conectar al servidor WebSocket
-      await _wsService.connect('ws://${_ipController.text.trim()}:9001');
-
-      // Registrarse como cliente Flutter
-      await _wsService.registerAsFlutter();
-
-      setState(() {
-        _isConnected = true;
-        _status = 'Conectado - Enviando resolución...';
-      });
-
-      // Enviar información del dispositivo automáticamente (incluyendo resolución)
-      await _sendDeviceInfo();
-    } catch (e) {
-      print('Error: $e');
-      setState(() {
-        _status = 'Error: $e';
-        _isConnected = false;
-      });
-    }
-  }
-
-  Future<void> _sendDeviceInfo() async {
-    try {
-      // Obtener resolución real de la pantalla
-      // final screenResolution = await ScreenInfoHelper.getRealScreenResolution();
-      // final int screenWidth = screenResolution['width']!;
-      // final int screenHeight = screenResolution['height']!;
-
-      final jsonString = jsonEncode({
-        'type': 'screen_info',
-        'device_name': 'Flutter Device',
-        'width': 1200,
-        'height': 800,
-      });
-
-      _wsService.sendMessage(jsonString);
-
-      // print('📤 Device info enviado: ${screenWidth}x${screenHeight}');
-
-      setState(() {
-        _status = 'Info enviada - Esperando stream...';
-      });
-    } catch (e) {
-      print('Error enviando device info: $e');
-    }
+    debugPrint('[SkreenApp] Abriendo stream http://localhost:9002 ...');
+    await _player.open(Media('http://localhost:9002'));
+    debugPrint('[SkreenApp] player.open() completado');
   }
 
   Future<void> _disconnect() async {
-    await _wsService.disconnect();
-    // Reinicializar WebRTC para la próxima conexión
-    await _webrtcManager.reset();
+    debugPrint('[SkreenApp] _disconnect()');
+    await _player.stop();
     setState(() {
       _isConnected = false;
-      _isVideoPlaying = false;
+      _isPlaying = false;
       _status = 'Desconectado';
-      _connectionState = '';
     });
   }
 
   @override
   void dispose() {
-    _wsService.disconnect();
-    _webrtcManager.dispose();
+    _player.dispose();
     super.dispose();
   }
 
@@ -175,175 +127,78 @@ class _MyHomePageState extends State<MyHomePage> {
       backgroundColor: Colors.black,
       body: Stack(
         children: [
-          // ========== Video Stream ==========
-          if (_isVideoPlaying)
+          // Video siempre presente con tamaño real
+          Positioned.fill(
+            child: Video(
+              controller: _videoController,
+              controls: NoVideoControls,
+              fit: BoxFit.contain,
+            ),
+          ),
+
+          // Texto de estado cuando no está conectado
+          if (!_isConnected)
             Center(
-              child: RTCVideoView(
-                _webrtcManager.remoteRenderer,
-                objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitContain,
-                mirror: false,
-              ),
-            )
-          else
-            Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  if (_isConnected)
-                    CircularProgressIndicator(color: Colors.white),
-                  SizedBox(height: 20),
-                  Text(
-                    _status,
-                    style: TextStyle(color: Colors.white, fontSize: 18),
-                    textAlign: TextAlign.center,
-                  ),
-                ],
+              child: Text(
+                _status,
+                style: const TextStyle(color: Colors.white, fontSize: 18),
               ),
             ),
 
-          // ========== Panel de control (superior) ==========
+          // Status bar superior
           Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
+            top: 0, left: 0, right: 0,
             child: Container(
               padding: EdgeInsets.only(
                 top: MediaQuery.of(context).padding.top + 10,
-                left: 20,
-                right: 20,
-                bottom: 10,
+                left: 20, right: 20, bottom: 10,
               ),
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
-                  colors: [Colors.black.withOpacity(0.7), Colors.transparent],
+                  colors: [Colors.black.withValues(alpha: 0.7), Colors.transparent],
                 ),
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              child: Row(
                 children: [
-                  Row(
-                    children: [
-                      // Indicador de estado
-                      Container(
-                        width: 12,
-                        height: 12,
-                        decoration: BoxDecoration(
-                          color: _isConnected
-                              ? (_isVideoPlaying ? Colors.green : Colors.orange)
-                              : Colors.red,
-                          shape: BoxShape.circle,
-                          boxShadow: [
-                            BoxShadow(
-                              color: _isConnected
-                                  ? (_isVideoPlaying
-                                        ? Colors.green
-                                        : Colors.orange)
-                                  : Colors.red,
-                              blurRadius: 8,
-                            ),
-                          ],
-                        ),
-                      ),
-                      SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          _status,
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 14,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  if (_connectionState.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 5, left: 22),
-                      child: Text(
-                        'Estado: $_connectionState',
-                        style: TextStyle(color: Colors.white70, fontSize: 12),
-                      ),
+                  Container(
+                    width: 10, height: 10,
+                    decoration: BoxDecoration(
+                      color: _isPlaying
+                          ? Colors.green
+                          : (_isConnected ? Colors.orange : Colors.red),
+                      shape: BoxShape.circle,
                     ),
+                  ),
+                  const SizedBox(width: 10),
+                  Text(_status, style: const TextStyle(color: Colors.white, fontSize: 14)),
                 ],
               ),
             ),
           ),
 
-          // ========== Controles (inferior) ==========
-          if (!_isVideoPlaying)
+          // Botón conectar
+          if (!_isConnected)
             Positioned(
-              bottom: 0,
-              left: 0,
-              right: 0,
-              child: Container(
-                padding: EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.bottomCenter,
-                    end: Alignment.topCenter,
-                    colors: [Colors.black.withOpacity(0.8), Colors.transparent],
-                  ),
+              bottom: 40, left: 20, right: 20,
+              child: ElevatedButton(
+                onPressed: _connect,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.deepPurple,
+                  foregroundColor: Colors.white,
+                  minimumSize: const Size(double.infinity, 50),
                 ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (!_isConnected)
-                      Container(
-                        margin: EdgeInsets.only(bottom: 20),
-                        child: TextField(
-                          controller: _ipController,
-                          style: TextStyle(color: Colors.white),
-                          decoration: InputDecoration(
-                            labelText: 'IP del servidor',
-                            labelStyle: TextStyle(color: Colors.white70),
-                            border: OutlineInputBorder(
-                              borderSide: BorderSide(color: Colors.white),
-                            ),
-                            enabledBorder: OutlineInputBorder(
-                              borderSide: BorderSide(color: Colors.white54),
-                            ),
-                            focusedBorder: OutlineInputBorder(
-                              borderSide: BorderSide(color: Colors.white),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ElevatedButton(
-                      onPressed: _isConnected
-                          ? _disconnect
-                          : _connectAndRegister,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: _isConnected
-                            ? Colors.red
-                            : Colors.deepPurple,
-                        foregroundColor: Colors.white,
-                        padding: EdgeInsets.symmetric(
-                          horizontal: 40,
-                          vertical: 15,
-                        ),
-                        minimumSize: Size(double.infinity, 50),
-                      ),
-                      child: Text(
-                        _isConnected ? 'Desconectar' : 'Conectar',
-                        style: TextStyle(fontSize: 16),
-                      ),
-                    ),
-                  ],
-                ),
+                child: const Text('Conectar', style: TextStyle(fontSize: 16)),
               ),
             )
           else
-            // Botón flotante de desconexión cuando hay video
             Positioned(
-              bottom: 20,
-              right: 20,
+              bottom: 20, right: 20,
               child: FloatingActionButton(
                 onPressed: _disconnect,
                 backgroundColor: Colors.red,
-                child: Icon(Icons.close),
+                child: const Icon(Icons.close),
               ),
             ),
         ],
