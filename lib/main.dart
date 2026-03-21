@@ -95,6 +95,11 @@ class _SkreenPageState extends State<SkreenPage> {
       await native.setProperty('demuxer-lavf-probesize', '524288');
       await native.setProperty('demuxer-lavf-analyzeduration', '0.5');
       await native.setProperty('network-timeout', '5');
+      await native.setProperty('demuxer-readahead-secs', '0');
+      await native.setProperty('video-latency-hacks', 'yes');
+      await native.setProperty('vd-lavc-threads', '1');
+      await native.setProperty('framedrop', 'vo');
+      await native.setProperty('speed', '1.0');
       debugPrint('[SkreenApp] Propiedades mpv configuradas');
     } catch (e) {
       debugPrint('[SkreenApp] setProperty error: $e');
