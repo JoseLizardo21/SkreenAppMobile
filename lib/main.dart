@@ -53,7 +53,12 @@ class _SkreenPageState extends State<SkreenPage> {
         logLevel: MPVLogLevel.warn,
       ),
     );
-    _videoController = VideoController(_player);
+    _videoController = VideoController(
+      _player,
+      configuration: const VideoControllerConfiguration(
+        enableHardwareAcceleration: false,
+      ),
+    );
 
     _player.stream.playing.listen((playing) {
       debugPrint('[SkreenApp] playing=$playing');
@@ -93,7 +98,7 @@ class _SkreenPageState extends State<SkreenPage> {
       await native.setProperty('cache', 'no');
       await native.setProperty('demuxer', 'lavf');
       await native.setProperty('demuxer-lavf-format', 'mpegts');
-      await native.setProperty('demuxer-lavf-probesize', '32768');
+      await native.setProperty('demuxer-lavf-probesize', '262144');
       await native.setProperty('demuxer-lavf-analyzeduration', '0.05');
       await native.setProperty('network-timeout', '5');
       await native.setProperty('demuxer-readahead-secs', '0');
