@@ -101,6 +101,9 @@ class _SkreenPageState extends State<SkreenPage> {
       await native.setProperty('framedrop', 'vo');
       await native.setProperty('correct-pts', 'no');
       await native.setProperty('stream-buffer-size', '4096');
+      await native.setProperty('video-sync', 'desync');
+      await native.setProperty('vd-lavc-fast', 'yes');
+      await native.setProperty('ao', 'null');
       await native.setProperty('speed', '1.0');
       debugPrint('[SkreenApp] Propiedades mpv configuradas');
     } catch (e) {
