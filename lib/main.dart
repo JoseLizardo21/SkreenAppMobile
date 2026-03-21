@@ -89,6 +89,7 @@ class _SkreenPageState extends State<SkreenPage> {
 
     try {
       final native = _player.platform as NativePlayer;
+      await native.setProperty('load-unsafe-playlists', 'yes');
       await native.setProperty('cache', 'no');
       await native.setProperty('demuxer', 'lavf');
       await native.setProperty('demuxer-lavf-format', 'mpegts');
@@ -110,8 +111,8 @@ class _SkreenPageState extends State<SkreenPage> {
       debugPrint('[SkreenApp] setProperty error: $e');
     }
 
-    debugPrint('[SkreenApp] Abriendo stream http://localhost:9002 ...');
-    await _player.open(Media('http://localhost:9002'));
+    debugPrint('[SkreenApp] Abriendo stream tcp://localhost:9002 ...');
+    await _player.open(Media('tcp://localhost:9002'));
     debugPrint('[SkreenApp] player.open() completado');
   }
 
