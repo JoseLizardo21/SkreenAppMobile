@@ -86,10 +86,10 @@ class MediaCodecDecoder(private val textureEntry: TextureRegistry.SurfaceTexture
 
     private fun feedInputBuffer(data: ByteArray) {
         val codec = this.codec ?: return
-        // Reintentar hasta 200ms: evita descartar silenciosamente IDR frames
-        // que son imprescindibles para re-sincronizar tras un stall
+        // Reintentar hasta 20ms: suficiente para IDR frames sin bloquear el hilo
+        // de lectura TCP (backpressure que causa latencia en cascada)
         var inputIdx = -1
-        val deadline = System.nanoTime() + 200_000_000L // 200ms
+        val deadline = System.nanoTime() + 20_000_000L // 20ms
         while (inputIdx < 0 && System.nanoTime() < deadline && running) {
             inputIdx = codec.dequeueInputBuffer(10_000)
         }
