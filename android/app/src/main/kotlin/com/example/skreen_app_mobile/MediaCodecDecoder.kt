@@ -17,8 +17,10 @@ class MediaCodecDecoder(private val textureEntry: TextureRegistry.SurfaceTexture
     private val surface = Surface(textureEntry.surfaceTexture())
 
     fun start() {
-        val format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, 1280, 720)
-        format.setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, 1024 * 1024)
+        // Resolución inicial: el decoder la ajusta automáticamente al recibir el SPS
+        val format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, 1920, 1080)
+        format.setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, 4 * 1024 * 1024) // 4MB para IDR a resolución nativa
+        format.setInteger(MediaFormat.KEY_LOW_LATENCY, 1)                   // minimiza buffering interno
 
         val decoder = MediaCodec.createDecoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
         codec = decoder
@@ -67,8 +69,14 @@ class MediaCodecDecoder(private val textureEntry: TextureRegistry.SurfaceTexture
             try {
                 // Espera hasta 5ms por un frame listo — nunca bloquea el hilo de input
                 val outputIdx = codec.dequeueOutputBuffer(info, 5_000)
-                if (outputIdx >= 0) {
-                    codec.releaseOutputBuffer(outputIdx, true)
+                when {
+                    outputIdx >= 0 -> codec.releaseOutputBuffer(outputIdx, true)
+                    outputIdx == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> {
+                        // El SPS llegó y el decoder ajustó resolución/formato
+                        val newFormat = codec.outputFormat
+                        android.util.Log.i("MediaCodecDecoder",
+                            "Output format changed: $newFormat")
+                    }
                 }
             } catch (_: Exception) {
                 break
@@ -78,8 +86,13 @@ class MediaCodecDecoder(private val textureEntry: TextureRegistry.SurfaceTexture
 
     private fun feedInputBuffer(data: ByteArray) {
         val codec = this.codec ?: return
-        // Espera hasta 10ms por un slot de input libre
-        val inputIdx = codec.dequeueInputBuffer(10_000)
+        // Reintentar hasta 200ms: evita descartar silenciosamente IDR frames
+        // que son imprescindibles para re-sincronizar tras un stall
+        var inputIdx = -1
+        val deadline = System.nanoTime() + 200_000_000L // 200ms
+        while (inputIdx < 0 && System.nanoTime() < deadline && running) {
+            inputIdx = codec.dequeueInputBuffer(10_000)
+        }
         if (inputIdx >= 0) {
             val buf = codec.getInputBuffer(inputIdx)!!
             buf.clear()
