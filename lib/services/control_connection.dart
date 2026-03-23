@@ -15,8 +15,8 @@ class ControlConnection {
     final buf = ByteData(13);
     buf.setUint8(0, type);
     buf.setInt32(1, slot, Endian.big);
-    buf.setFloat32(5, nx.clamp(0.0, 1.0), Endian.big);
-    buf.setFloat32(9, ny.clamp(0.0, 1.0), Endian.big);
+    buf.setFloat32(5, nx.clamp(-1.0, 1.0), Endian.big);
+    buf.setFloat32(9, ny.clamp(-1.0, 1.0), Endian.big);
     socket.add(buf.buffer.asUint8List());
   }
 

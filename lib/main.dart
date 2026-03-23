@@ -37,6 +37,10 @@ class _SkreenPageState extends State<SkreenPage> {
   String _status = 'Desconectado';
   final ControlConnection _controlConn = ControlConnection();
 
+  // Multi-touch tracking
+  final Map<int, Offset> _activePointers = {};
+  bool _scrollMode = false;
+
   @override
   void initState() {
     super.initState();
@@ -95,17 +99,39 @@ class _SkreenPageState extends State<SkreenPage> {
               ? LayoutBuilder(
                   builder: (context, constraints) => Listener(
                     onPointerDown: (e) {
-                      final nx = e.localPosition.dx / constraints.maxWidth;
-                      final ny = e.localPosition.dy / constraints.maxHeight;
-                      _controlConn.sendEvent(1, 0, nx, ny); // touch down
+                      _activePointers[e.pointer] = e.localPosition;
+                      if (_activePointers.length == 1) {
+                        _scrollMode = false;
+                        final nx = e.localPosition.dx / constraints.maxWidth;
+                        final ny = e.localPosition.dy / constraints.maxHeight;
+                        _controlConn.sendEvent(1, 0, nx, ny); // touch down
+                      } else if (_activePointers.length == 2 && !_scrollMode) {
+                        _scrollMode = true;
+                        _controlConn.sendEvent(2, 0, 0, 0); // cancel pending tap/drag
+                      }
                     },
                     onPointerMove: (e) {
-                      final nx = e.localPosition.dx / constraints.maxWidth;
-                      final ny = e.localPosition.dy / constraints.maxHeight;
-                      _controlConn.sendEvent(0, 0, nx, ny); // touch motion
+                      final prev = _activePointers[e.pointer];
+                      _activePointers[e.pointer] = e.localPosition;
+                      if (!_scrollMode && _activePointers.length == 1) {
+                        final nx = e.localPosition.dx / constraints.maxWidth;
+                        final ny = e.localPosition.dy / constraints.maxHeight;
+                        _controlConn.sendEvent(0, 0, nx, ny); // move
+                      } else if (_scrollMode && _activePointers.length >= 2 && prev != null) {
+                        final dy = (e.localPosition.dy - prev.dy) / constraints.maxHeight;
+                        if (dy.abs() > 0.001) {
+                          _controlConn.sendEvent(3, 0, 0, dy); // scroll
+                        }
+                      }
                     },
                     onPointerUp: (e) {
-                      _controlConn.sendEvent(2, 0, 0, 0); // touch up
+                      _activePointers.remove(e.pointer);
+                      if (_activePointers.isEmpty) {
+                        if (!_scrollMode) {
+                          _controlConn.sendEvent(2, 0, 0, 0); // touch up
+                        }
+                        _scrollMode = false;
+                      }
                     },
                     child: Texture(textureId: _textureId!),
                   ),
