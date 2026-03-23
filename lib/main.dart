@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
+import 'services/control_connection.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -34,6 +35,7 @@ class _SkreenPageState extends State<SkreenPage> {
   int? _textureId;
   bool _isConnected = false;
   String _status = 'Desconectado';
+  final ControlConnection _controlConn = ControlConnection();
 
   @override
   void initState() {
@@ -50,6 +52,7 @@ class _SkreenPageState extends State<SkreenPage> {
 
     try {
       final textureId = await _decoderChannel.invokeMethod<int>('start');
+      await _controlConn.connect().catchError((_) {});
       setState(() {
         _textureId = textureId;
         _status = 'Transmitiendo';
@@ -64,6 +67,7 @@ class _SkreenPageState extends State<SkreenPage> {
   }
 
   Future<void> _disconnect() async {
+    _controlConn.disconnect();
     await _decoderChannel.invokeMethod('stop');
     setState(() {
       _textureId = null;
@@ -74,6 +78,7 @@ class _SkreenPageState extends State<SkreenPage> {
 
   @override
   void dispose() {
+    _controlConn.disconnect();
     _decoderChannel.invokeMethod('stop');
     super.dispose();
   }
@@ -87,8 +92,25 @@ class _SkreenPageState extends State<SkreenPage> {
           // Video via MediaCodec nativo
           Positioned.fill(
             child: _textureId != null
-                ? Texture(textureId: _textureId!)
-                : const SizedBox.shrink(),
+              ? LayoutBuilder(
+                  builder: (context, constraints) => Listener(
+                    onPointerDown: (e) {
+                      final nx = e.localPosition.dx / constraints.maxWidth;
+                      final ny = e.localPosition.dy / constraints.maxHeight;
+                      _controlConn.sendEvent(1, 0, nx, ny); // touch down
+                    },
+                    onPointerMove: (e) {
+                      final nx = e.localPosition.dx / constraints.maxWidth;
+                      final ny = e.localPosition.dy / constraints.maxHeight;
+                      _controlConn.sendEvent(0, 0, nx, ny); // touch motion
+                    },
+                    onPointerUp: (e) {
+                      _controlConn.sendEvent(2, 0, 0, 0); // touch up
+                    },
+                    child: Texture(textureId: _textureId!),
+                  ),
+                )
+              : const SizedBox.shrink(),
           ),
 
           // Texto de estado cuando no está conectado
