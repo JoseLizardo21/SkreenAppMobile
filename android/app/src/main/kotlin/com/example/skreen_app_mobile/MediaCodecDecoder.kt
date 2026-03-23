@@ -11,7 +11,9 @@ class MediaCodecDecoder(private val textureEntry: TextureRegistry.SurfaceTexture
 
     private var codec: MediaCodec? = null
     private var socket: Socket? = null
-    private var thread: Thread? = null
+    private var inputThread: Thread? = null
+    private var outputThread: Thread? = null
+    @Volatile private var running = false
     private val surface = Surface(textureEntry.surfaceTexture())
 
     fun start() {
@@ -23,19 +25,20 @@ class MediaCodecDecoder(private val textureEntry: TextureRegistry.SurfaceTexture
         decoder.configure(format, surface, null, 0)
         decoder.start()
 
-        thread = Thread { runDecodeLoop() }
-        thread?.start()
+        running = true
+        outputThread = Thread { runOutputLoop() }.also { it.start() }
+        inputThread = Thread { runInputLoop() }.also { it.start() }
     }
 
-    private fun runDecodeLoop() {
+    // Hilo 1: lee frames del socket y los alimenta al codec
+    private fun runInputLoop() {
         try {
             val sock = Socket("127.0.0.1", 9002)
             socket = sock
             val input = sock.getInputStream()
             val lenBuf = ByteArray(4)
 
-            while (!Thread.currentThread().isInterrupted) {
-                // Leer prefijo de 4 bytes con el tamaño del frame
+            while (running && !Thread.currentThread().isInterrupted) {
                 if (!readFully(input, lenBuf, 4)) break
                 val len = ((lenBuf[0].toInt() and 0xFF) shl 24) or
                           ((lenBuf[1].toInt() and 0xFF) shl 16) or
@@ -47,7 +50,7 @@ class MediaCodecDecoder(private val textureEntry: TextureRegistry.SurfaceTexture
                 val data = ByteArray(len)
                 if (!readFully(input, data, len)) break
 
-                feedToCodec(data)
+                feedInputBuffer(data)
             }
         } catch (_: Exception) {
             // conexión cerrada o interrumpida
@@ -56,23 +59,32 @@ class MediaCodecDecoder(private val textureEntry: TextureRegistry.SurfaceTexture
         }
     }
 
-    private fun feedToCodec(data: ByteArray) {
-        val codec = this.codec ?: return
+    // Hilo 2: drena continuamente los output buffers del codec y renderiza
+    private fun runOutputLoop() {
+        val info = MediaCodec.BufferInfo()
+        while (running && !Thread.currentThread().isInterrupted) {
+            val codec = this.codec ?: break
+            try {
+                // Espera hasta 5ms por un frame listo — nunca bloquea el hilo de input
+                val outputIdx = codec.dequeueOutputBuffer(info, 5_000)
+                if (outputIdx >= 0) {
+                    codec.releaseOutputBuffer(outputIdx, true)
+                }
+            } catch (_: Exception) {
+                break
+            }
+        }
+    }
 
+    private fun feedInputBuffer(data: ByteArray) {
+        val codec = this.codec ?: return
+        // Espera hasta 10ms por un slot de input libre
         val inputIdx = codec.dequeueInputBuffer(10_000)
         if (inputIdx >= 0) {
             val buf = codec.getInputBuffer(inputIdx)!!
             buf.clear()
             buf.put(data)
             codec.queueInputBuffer(inputIdx, 0, data.size, System.nanoTime() / 1000, 0)
-        }
-
-        // Renderizar todos los frames disponibles
-        val info = MediaCodec.BufferInfo()
-        var outputIdx = codec.dequeueOutputBuffer(info, 0)
-        while (outputIdx >= 0) {
-            codec.releaseOutputBuffer(outputIdx, true) // true = render al Surface
-            outputIdx = codec.dequeueOutputBuffer(info, 0)
         }
     }
 
@@ -87,8 +99,12 @@ class MediaCodecDecoder(private val textureEntry: TextureRegistry.SurfaceTexture
     }
 
     fun stop() {
-        thread?.interrupt()
+        running = false
+        inputThread?.interrupt()
+        outputThread?.interrupt()
         socket?.close()
+        inputThread?.join(500)
+        outputThread?.join(500)
         codec?.stop()
         codec?.release()
         surface.release()
