@@ -74,14 +74,19 @@ class MediaCodecDecoder(private val textureEntry: TextureRegistry.SurfaceTexture
                     outputIdx >= 0 -> codec.releaseOutputBuffer(outputIdx, true)
                     outputIdx == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> {
                         val newFormat = codec.outputFormat
-                        val w = newFormat.getInteger(MediaFormat.KEY_WIDTH)
-                        val h = newFormat.getInteger(MediaFormat.KEY_HEIGHT)
-                        android.util.Log.i("MediaCodecDecoder", "Output format changed: ${w}x${h}")
-                        onVideoSizeChanged?.invoke(w, h)
+                        if (newFormat.containsKey(MediaFormat.KEY_WIDTH) &&
+                            newFormat.containsKey(MediaFormat.KEY_HEIGHT)) {
+                            val w = newFormat.getInteger(MediaFormat.KEY_WIDTH)
+                            val h = newFormat.getInteger(MediaFormat.KEY_HEIGHT)
+                            android.util.Log.i("MediaCodecDecoder", "Output format changed: ${w}x${h}")
+                            onVideoSizeChanged?.invoke(w, h)
+                        }
                     }
                 }
-            } catch (_: Exception) {
+            } catch (e: IllegalStateException) {
                 break
+            } catch (_: Exception) {
+                // excepción recuperable — continuar drenando buffers
             }
         }
     }
