@@ -4,12 +4,14 @@ import android.util.DisplayMetrics
 import android.view.WindowManager
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
 
     private val SCREEN_CHANNEL = "com.yourapp/screen_info"
     private val DECODER_CHANNEL = "skreen/decoder"
+    private val VIDEO_SIZE_CHANNEL = "skreen/video_size"
 
     private var decoder: MediaCodecDecoder? = null
 
@@ -36,14 +38,29 @@ class MainActivity : FlutterActivity() {
                 }
             }
 
-        // Canal nuevo: decoder nativo H.264 via MediaCodec
+        // Canal: notifica la resolución real del video cuando el decoder la detecta
+        var videoSizeEventSink: EventChannel.EventSink? = null
+        EventChannel(flutterEngine.dartExecutor.binaryMessenger, VIDEO_SIZE_CHANNEL)
+            .setStreamHandler(object : EventChannel.StreamHandler {
+                override fun onListen(arguments: Any?, sink: EventChannel.EventSink) {
+                    videoSizeEventSink = sink
+                    decoder?.onVideoSizeChanged = { w, h -> sink.success(mapOf("width" to w, "height" to h)) }
+                }
+                override fun onCancel(arguments: Any?) { videoSizeEventSink = null }
+            })
+
+        // Canal: decoder nativo H.264 via MediaCodec
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, DECODER_CHANNEL)
             .setMethodCallHandler { call, result ->
                 when (call.method) {
                     "start" -> {
                         try {
                             val textureEntry = flutterEngine.renderer.createSurfaceTexture()
-                            decoder = MediaCodecDecoder(textureEntry)
+                            decoder = MediaCodecDecoder(textureEntry).also { dec ->
+                                videoSizeEventSink?.let { sink ->
+                                    dec.onVideoSizeChanged = { w, h -> sink.success(mapOf("width" to w, "height" to h)) }
+                                }
+                            }
                             decoder!!.start()
                             result.success(textureEntry.id())
                         } catch (e: Exception) {

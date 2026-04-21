@@ -31,11 +31,14 @@ class SkreenPage extends StatefulWidget {
 
 class _SkreenPageState extends State<SkreenPage> {
   static const _decoderChannel = MethodChannel('skreen/decoder');
+  static const _videoSizeChannel = EventChannel('skreen/video_size');
 
   int? _textureId;
   bool _isConnected = false;
   String _status = 'Desconectado';
   final ControlConnection _controlConn = ControlConnection();
+  double _videoWidth = 1920;
+  double _videoHeight = 1080;
 
   // Multi-touch tracking
   final Map<int, Offset> _activePointers = {};
@@ -46,6 +49,11 @@ class _SkreenPageState extends State<SkreenPage> {
     super.initState();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     WakelockPlus.enable();
+    _videoSizeChannel.receiveBroadcastStream().listen((event) {
+      final w = (event['width'] as int).toDouble();
+      final h = (event['height'] as int).toDouble();
+      if (w > 0 && h > 0) setState(() { _videoWidth = w; _videoHeight = h; });
+    });
   }
 
   Future<void> _connect() async {
@@ -97,44 +105,67 @@ class _SkreenPageState extends State<SkreenPage> {
           Positioned.fill(
             child: _textureId != null
               ? LayoutBuilder(
-                  builder: (context, constraints) => Listener(
-                    onPointerDown: (e) {
-                      _activePointers[e.pointer] = e.localPosition;
-                      if (_activePointers.length == 1) {
-                        _scrollMode = false;
-                        final nx = e.localPosition.dx / constraints.maxWidth;
-                        final ny = e.localPosition.dy / constraints.maxHeight;
-                        _controlConn.sendEvent(1, 0, nx, ny); // touch down
-                      } else if (_activePointers.length == 2 && !_scrollMode) {
-                        _scrollMode = true;
-                        _controlConn.sendEvent(2, 0, 0, 0); // cancel pending tap/drag
-                      }
-                    },
-                    onPointerMove: (e) {
-                      final prev = _activePointers[e.pointer];
-                      _activePointers[e.pointer] = e.localPosition;
-                      if (!_scrollMode && _activePointers.length == 1) {
-                        final nx = e.localPosition.dx / constraints.maxWidth;
-                        final ny = e.localPosition.dy / constraints.maxHeight;
-                        _controlConn.sendEvent(0, 0, nx, ny); // move
-                      } else if (_scrollMode && _activePointers.length >= 2 && prev != null) {
-                        final dy = (e.localPosition.dy - prev.dy) / constraints.maxHeight;
-                        if (dy.abs() > 0.001) {
-                          _controlConn.sendEvent(3, 0, 0, dy); // scroll
+                  builder: (context, constraints) {
+                    // Área real del video respetando el aspect ratio del escritorio
+                    final videoAspect = _videoWidth / _videoHeight;
+                    final screenAspect = constraints.maxWidth / constraints.maxHeight;
+                    final double videoW, videoH;
+                    if (screenAspect > videoAspect) {
+                      // Pantalla más ancha: pillarbox (barras laterales)
+                      videoH = constraints.maxHeight;
+                      videoW = videoH * videoAspect;
+                    } else {
+                      // Pantalla más alta: letterbox (barras arriba/abajo)
+                      videoW = constraints.maxWidth;
+                      videoH = videoW / videoAspect;
+                    }
+                    return Listener(
+                      onPointerDown: (e) {
+                        _activePointers[e.pointer] = e.localPosition;
+                        if (_activePointers.length == 1) {
+                          _scrollMode = false;
+                          final nx = (e.localPosition.dx - (constraints.maxWidth - videoW) / 2) / videoW;
+                          final ny = (e.localPosition.dy - (constraints.maxHeight - videoH) / 2) / videoH;
+                          if (nx >= 0 && nx <= 1 && ny >= 0 && ny <= 1) {
+                            _controlConn.sendEvent(1, 0, nx, ny); // touch down
+                          }
+                        } else if (_activePointers.length == 2 && !_scrollMode) {
+                          _scrollMode = true;
+                          _controlConn.sendEvent(2, 0, 0, 0); // cancel pending tap/drag
                         }
-                      }
-                    },
-                    onPointerUp: (e) {
-                      _activePointers.remove(e.pointer);
-                      if (_activePointers.isEmpty) {
-                        if (!_scrollMode) {
-                          _controlConn.sendEvent(2, 0, 0, 0); // touch up
+                      },
+                      onPointerMove: (e) {
+                        final prev = _activePointers[e.pointer];
+                        _activePointers[e.pointer] = e.localPosition;
+                        if (!_scrollMode && _activePointers.length == 1) {
+                          final nx = (e.localPosition.dx - (constraints.maxWidth - videoW) / 2) / videoW;
+                          final ny = (e.localPosition.dy - (constraints.maxHeight - videoH) / 2) / videoH;
+                          _controlConn.sendEvent(0, 0, nx.clamp(0.0, 1.0), ny.clamp(0.0, 1.0)); // move
+                        } else if (_scrollMode && _activePointers.length >= 2 && prev != null) {
+                          final dy = (e.localPosition.dy - prev.dy) / videoH;
+                          if (dy.abs() > 0.001) {
+                            _controlConn.sendEvent(3, 0, 0, dy); // scroll
+                          }
                         }
-                        _scrollMode = false;
-                      }
-                    },
-                    child: Texture(textureId: _textureId!),
-                  ),
+                      },
+                      onPointerUp: (e) {
+                        _activePointers.remove(e.pointer);
+                        if (_activePointers.isEmpty) {
+                          if (!_scrollMode) {
+                            _controlConn.sendEvent(2, 0, 0, 0); // touch up
+                          }
+                          _scrollMode = false;
+                        }
+                      },
+                      child: Center(
+                        child: SizedBox(
+                          width: videoW,
+                          height: videoH,
+                          child: Texture(textureId: _textureId!),
+                        ),
+                      ),
+                    );
+                  },
                 )
               : const SizedBox.shrink(),
           ),

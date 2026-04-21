@@ -9,6 +9,7 @@ import java.net.Socket
 
 class MediaCodecDecoder(private val textureEntry: TextureRegistry.SurfaceTextureEntry) {
 
+    var onVideoSizeChanged: ((Int, Int) -> Unit)? = null
     private var codec: MediaCodec? = null
     private var socket: Socket? = null
     private var inputThread: Thread? = null
@@ -72,10 +73,11 @@ class MediaCodecDecoder(private val textureEntry: TextureRegistry.SurfaceTexture
                 when {
                     outputIdx >= 0 -> codec.releaseOutputBuffer(outputIdx, true)
                     outputIdx == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> {
-                        // El SPS llegó y el decoder ajustó resolución/formato
                         val newFormat = codec.outputFormat
-                        android.util.Log.i("MediaCodecDecoder",
-                            "Output format changed: $newFormat")
+                        val w = newFormat.getInteger(MediaFormat.KEY_WIDTH)
+                        val h = newFormat.getInteger(MediaFormat.KEY_HEIGHT)
+                        android.util.Log.i("MediaCodecDecoder", "Output format changed: ${w}x${h}")
+                        onVideoSizeChanged?.invoke(w, h)
                     }
                 }
             } catch (_: Exception) {
