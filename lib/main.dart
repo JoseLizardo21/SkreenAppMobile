@@ -64,6 +64,7 @@ class _SkreenPageState extends State<SkreenPage> {
 
     try {
       final textureId = await _decoderChannel.invokeMethod<int>('start');
+      _controlConn.onStreamStopped = _disconnect;
       await _controlConn.connect().catchError((_) {});
       setState(() {
         _textureId = textureId;
