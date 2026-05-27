@@ -12,13 +12,13 @@ class MainActivity : FlutterActivity() {
     private val SCREEN_CHANNEL = "com.yourapp/screen_info"
     private val DECODER_CHANNEL = "skreen/decoder"
     private val VIDEO_SIZE_CHANNEL = "skreen/video_size"
+    private val DECODER_EVENT_CHANNEL = "skreen/decoder_events"
 
     private var decoder: MediaCodecDecoder? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
 
-        // Canal existente: información de pantalla
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, SCREEN_CHANNEL)
             .setMethodCallHandler { call, result ->
                 if (call.method == "getScreenResolution") {
@@ -38,7 +38,6 @@ class MainActivity : FlutterActivity() {
                 }
             }
 
-        // Canal: notifica la resolución real del video cuando el decoder la detecta
         var videoSizeEventSink: EventChannel.EventSink? = null
         EventChannel(flutterEngine.dartExecutor.binaryMessenger, VIDEO_SIZE_CHANNEL)
             .setStreamHandler(object : EventChannel.StreamHandler {
@@ -49,16 +48,33 @@ class MainActivity : FlutterActivity() {
                 override fun onCancel(arguments: Any?) { videoSizeEventSink = null }
             })
 
-        // Canal: decoder nativo H.264 via MediaCodec
+        var decoderEventSink: EventChannel.EventSink? = null
+        EventChannel(flutterEngine.dartExecutor.binaryMessenger, DECODER_EVENT_CHANNEL)
+            .setStreamHandler(object : EventChannel.StreamHandler {
+                override fun onListen(arguments: Any?, sink: EventChannel.EventSink) {
+                    decoderEventSink = sink
+                }
+                override fun onCancel(arguments: Any?) { decoderEventSink = null }
+            })
+
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, DECODER_CHANNEL)
             .setMethodCallHandler { call, result ->
                 when (call.method) {
                     "start" -> {
                         try {
+                            decoder?.stop()
+                            decoder = null
                             val textureEntry = flutterEngine.renderer.createSurfaceTexture()
                             decoder = MediaCodecDecoder(textureEntry).also { dec ->
                                 videoSizeEventSink?.let { sink ->
                                     dec.onVideoSizeChanged = { w, h -> sink.success(mapOf("width" to w, "height" to h)) }
+                                }
+                                dec.onError = {
+                                    runOnUiThread {
+                                        decoder?.stop()
+                                        decoder = null
+                                        decoderEventSink?.success("error")
+                                    }
                                 }
                             }
                             decoder!!.start()

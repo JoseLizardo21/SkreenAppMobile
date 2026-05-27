@@ -32,6 +32,7 @@ class SkreenPage extends StatefulWidget {
 class _SkreenPageState extends State<SkreenPage> {
   static const _decoderChannel = MethodChannel('skreen/decoder');
   static const _videoSizeChannel = EventChannel('skreen/video_size');
+  static const _decoderEventChannel = EventChannel('skreen/decoder_events');
 
   int? _textureId;
   bool _isConnected = false;
@@ -54,10 +55,18 @@ class _SkreenPageState extends State<SkreenPage> {
       final h = (event['height'] as int).toDouble();
       if (w > 0 && h > 0) setState(() { _videoWidth = w; _videoHeight = h; });
     });
+    _decoderEventChannel.receiveBroadcastStream().listen((event) {
+      if (event == 'error' && _isConnected) _disconnect();
+    });
   }
 
   Future<void> _connect() async {
+    // Limpiar cualquier decoder anterior antes de iniciar (cubre hot reload)
+    if (_textureId != null) {
+      await _decoderChannel.invokeMethod('stop').catchError((_) {});
+    }
     setState(() {
+      _textureId = null;
       _isConnected = true;
       _status = 'Conectando...';
     });
@@ -81,7 +90,7 @@ class _SkreenPageState extends State<SkreenPage> {
 
   Future<void> _disconnect() async {
     _controlConn.disconnect();
-    await _decoderChannel.invokeMethod('stop');
+    await _decoderChannel.invokeMethod('stop').catchError((_) {});
     setState(() {
       _textureId = null;
       _isConnected = false;

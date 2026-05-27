@@ -10,20 +10,22 @@ import java.net.Socket
 class MediaCodecDecoder(private val textureEntry: TextureRegistry.SurfaceTextureEntry) {
 
     var onVideoSizeChanged: ((Int, Int) -> Unit)? = null
+    var onError: (() -> Unit)? = null
+
     private var codec: MediaCodec? = null
     private var socket: Socket? = null
     private var inputThread: Thread? = null
     private var outputThread: Thread? = null
     @Volatile private var running = false
-    private val surface = Surface(textureEntry.surfaceTexture())
+    private val surface = Surface(textureEntry.surfaceTexture().also {
+        it.setDefaultBufferSize(1920, 1080)
+    })
 
     fun start() {
-        // Resolución inicial: el decoder la ajusta automáticamente al recibir el SPS
         val format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, 1920, 1080)
-        format.setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, 4 * 1024 * 1024) // 4MB para IDR a resolución nativa
-        format.setInteger(MediaFormat.KEY_LOW_LATENCY, 1)                   // minimiza buffering interno
+        format.setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, 4 * 1024 * 1024)
 
-        val decoder = MediaCodec.createDecoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
+        val decoder = createDecoder()
         codec = decoder
         decoder.configure(format, surface, null, 0)
         decoder.start()
@@ -33,7 +35,19 @@ class MediaCodecDecoder(private val textureEntry: TextureRegistry.SurfaceTexture
         inputThread = Thread { runInputLoop() }.also { it.start() }
     }
 
-    // Hilo 1: lee frames del socket y los alimenta al codec
+    // El decoder Allwinner (c2.allwinner.avc.decoder) crashea en 1920x1080 con
+    // "previous call to queue exceeded timeout". Usar software como fallback.
+    private fun createDecoder(): MediaCodec {
+        val hw = MediaCodec.createDecoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
+        if (!hw.name.contains("allwinner", ignoreCase = true)) return hw
+        hw.release()
+        android.util.Log.w("MediaCodecDecoder", "Allwinner HW decoder detectado — usando software")
+        for (name in listOf("c2.android.avc.decoder", "OMX.google.h264.decoder")) {
+            try { return MediaCodec.createByCodecName(name) } catch (_: Exception) {}
+        }
+        return MediaCodec.createDecoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
+    }
+
     private fun runInputLoop() {
         try {
             val sock = Socket("127.0.0.1", 9002)
@@ -56,19 +70,16 @@ class MediaCodecDecoder(private val textureEntry: TextureRegistry.SurfaceTexture
                 feedInputBuffer(data)
             }
         } catch (_: Exception) {
-            // conexión cerrada o interrumpida
         } finally {
             socket?.close()
         }
     }
 
-    // Hilo 2: drena continuamente los output buffers del codec y renderiza
     private fun runOutputLoop() {
         val info = MediaCodec.BufferInfo()
         while (running && !Thread.currentThread().isInterrupted) {
             val codec = this.codec ?: break
             try {
-                // Espera hasta 5ms por un frame listo — nunca bloquea el hilo de input
                 val outputIdx = codec.dequeueOutputBuffer(info, 5_000)
                 when {
                     outputIdx >= 0 -> codec.releaseOutputBuffer(outputIdx, true)
@@ -83,20 +94,18 @@ class MediaCodecDecoder(private val textureEntry: TextureRegistry.SurfaceTexture
                         }
                     }
                 }
-            } catch (e: IllegalStateException) {
+            } catch (_: IllegalStateException) {
+                // El codec entró en estado de error (hardware crash); notificar al app.
+                onError?.invoke()
                 break
-            } catch (_: Exception) {
-                // excepción recuperable — continuar drenando buffers
-            }
+            } catch (_: Exception) {}
         }
     }
 
     private fun feedInputBuffer(data: ByteArray) {
         val codec = this.codec ?: return
-        // Reintentar hasta 20ms: suficiente para IDR frames sin bloquear el hilo
-        // de lectura TCP (backpressure que causa latencia en cascada)
         var inputIdx = -1
-        val deadline = System.nanoTime() + 20_000_000L // 20ms
+        val deadline = System.nanoTime() + 20_000_000L
         while (inputIdx < 0 && System.nanoTime() < deadline && running) {
             inputIdx = codec.dequeueInputBuffer(10_000)
         }
@@ -125,9 +134,9 @@ class MediaCodecDecoder(private val textureEntry: TextureRegistry.SurfaceTexture
         socket?.close()
         inputThread?.join(500)
         outputThread?.join(500)
-        codec?.stop()
-        codec?.release()
-        surface.release()
+        try { codec?.reset() } catch (_: Exception) {}
+        try { codec?.release() } catch (_: Exception) {}
+        try { surface.release() } catch (_: Exception) {}
         textureEntry.release()
         codec = null
     }
