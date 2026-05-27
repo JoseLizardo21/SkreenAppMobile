@@ -36,7 +36,7 @@ class _SkreenPageState extends State<SkreenPage> {
 
   int? _textureId;
   bool _isConnected = false;
-  String _status = 'Desconectado';
+  String _status = 'Disconnected';
   final ControlConnection _controlConn = ControlConnection();
   double _videoWidth = 1920;
   double _videoHeight = 1080;
@@ -68,7 +68,7 @@ class _SkreenPageState extends State<SkreenPage> {
     setState(() {
       _textureId = null;
       _isConnected = true;
-      _status = 'Conectando...';
+      _status = 'Connecting...';
     });
 
     try {
@@ -77,10 +77,10 @@ class _SkreenPageState extends State<SkreenPage> {
       await _controlConn.connect().catchError((_) {});
       setState(() {
         _textureId = textureId;
-        _status = 'Transmitiendo';
+        _status = 'Streaming';
       });
     } catch (e) {
-      debugPrint('[SkreenApp] Error al iniciar decoder: $e');
+      debugPrint('[SkreenApp] Error starting decoder: $e');
       setState(() {
         _isConnected = false;
         _status = 'Error: $e';
@@ -94,7 +94,7 @@ class _SkreenPageState extends State<SkreenPage> {
     setState(() {
       _textureId = null;
       _isConnected = false;
-      _status = 'Desconectado';
+      _status = 'Disconnected';
     });
   }
 
@@ -200,7 +200,7 @@ class _SkreenPageState extends State<SkreenPage> {
                   foregroundColor: Colors.white,
                   minimumSize: const Size(double.infinity, 50),
                 ),
-                child: const Text('Conectar', style: TextStyle(fontSize: 16)),
+                child: const Text('Connect', style: TextStyle(fontSize: 16)),
               ),
             )
           else
