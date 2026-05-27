@@ -189,39 +189,6 @@ class _SkreenPageState extends State<SkreenPage> {
               ),
             ),
 
-          // Status bar superior
-          Positioned(
-            top: 0, left: 0, right: 0,
-            child: Container(
-              padding: EdgeInsets.only(
-                top: MediaQuery.of(context).padding.top + 10,
-                left: 20, right: 20, bottom: 10,
-              ),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [Colors.black.withValues(alpha: 0.7), Colors.transparent],
-                ),
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    width: 10, height: 10,
-                    decoration: BoxDecoration(
-                      color: _textureId != null
-                          ? Colors.green
-                          : (_isConnected ? Colors.orange : Colors.red),
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Text(_status, style: const TextStyle(color: Colors.white, fontSize: 14)),
-                ],
-              ),
-            ),
-          ),
-
           // Botón conectar
           if (!_isConnected)
             Positioned(
