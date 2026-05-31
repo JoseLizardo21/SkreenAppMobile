@@ -17,6 +17,8 @@ class MediaCodecDecoder(private val textureEntry: TextureRegistry.SurfaceTexture
     private var inputThread: Thread? = null
     private var outputThread: Thread? = null
     @Volatile private var running = false
+    @Volatile private var codecConfigured = false
+    @Volatile private var reconfiguring = false
     private val surface = Surface(textureEntry.surfaceTexture().also {
         it.setDefaultBufferSize(1920, 1080)
     })
@@ -30,6 +32,7 @@ class MediaCodecDecoder(private val textureEntry: TextureRegistry.SurfaceTexture
         decoder.configure(format, surface, null, 0)
         decoder.start()
 
+        codecConfigured = false
         running = true
         outputThread = Thread { runOutputLoop() }.also { it.start() }
         inputThread = Thread { runInputLoop() }.also { it.start() }
@@ -95,7 +98,10 @@ class MediaCodecDecoder(private val textureEntry: TextureRegistry.SurfaceTexture
                     }
                 }
             } catch (_: IllegalStateException) {
-                // El codec entró en estado de error (hardware crash); notificar al app.
+                if (reconfiguring) {
+                    Thread.sleep(50)
+                    continue
+                }
                 onError?.invoke()
                 break
             } catch (_: Exception) {}
@@ -104,6 +110,25 @@ class MediaCodecDecoder(private val textureEntry: TextureRegistry.SurfaceTexture
 
     private fun feedInputBuffer(data: ByteArray) {
         val codec = this.codec ?: return
+
+        if (!codecConfigured) {
+            val (sps, pps) = extractSPSPPS(data)
+            if (sps != null && pps != null) {
+                reconfiguring = true
+                codec.stop()
+                val format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, 1920, 1080)
+                format.setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, 4 * 1024 * 1024)
+                format.setByteBuffer("csd-0", java.nio.ByteBuffer.wrap(sps))
+                format.setByteBuffer("csd-1", java.nio.ByteBuffer.wrap(pps))
+                codec.configure(format, surface, null, 0)
+                codec.start()
+                codecConfigured = true
+                reconfiguring = false
+            } else {
+                return
+            }
+        }
+
         var inputIdx = -1
         val deadline = System.nanoTime() + 20_000_000L
         while (inputIdx < 0 && System.nanoTime() < deadline && running) {
@@ -115,6 +140,35 @@ class MediaCodecDecoder(private val textureEntry: TextureRegistry.SurfaceTexture
             buf.put(data)
             codec.queueInputBuffer(inputIdx, 0, data.size, System.nanoTime() / 1000, 0)
         }
+    }
+
+    private fun extractSPSPPS(data: ByteArray): Pair<ByteArray?, ByteArray?> {
+        var sps: ByteArray? = null
+        var pps: ByteArray? = null
+        var i = 0
+        while (i < data.size - 4) {
+            if (data[i] == 0.toByte() && data[i+1] == 0.toByte() &&
+                data[i+2] == 0.toByte() && data[i+3] == 1.toByte()) {
+                val nalStart = i + 4
+                if (nalStart >= data.size) break
+                val nalType = data[nalStart].toInt() and 0x1F
+                var j = nalStart + 1
+                while (j < data.size - 3) {
+                    if (data[j] == 0.toByte() && data[j+1] == 0.toByte() &&
+                        data[j+2] == 0.toByte() && data[j+3] == 1.toByte()) break
+                    j++
+                }
+                val nalEnd = if (j < data.size - 3) j else data.size
+                val nal = data.copyOfRange(i, nalEnd)
+                when (nalType) {
+                    7 -> sps = nal
+                    8 -> pps = nal
+                }
+                i = nalEnd
+            } else i++
+            if (sps != null && pps != null) break
+        }
+        return Pair(sps, pps)
     }
 
     private fun readFully(input: InputStream, buf: ByteArray, len: Int): Boolean {
@@ -129,6 +183,8 @@ class MediaCodecDecoder(private val textureEntry: TextureRegistry.SurfaceTexture
 
     fun stop() {
         running = false
+        codecConfigured = false
+        reconfiguring = false
         inputThread?.interrupt()
         outputThread?.interrupt()
         socket?.close()
