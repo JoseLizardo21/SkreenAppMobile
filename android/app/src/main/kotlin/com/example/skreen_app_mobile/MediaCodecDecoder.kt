@@ -152,6 +152,13 @@ class MediaCodecDecoder(private val textureEntry: TextureRegistry.SurfaceTexture
                 val nalStart = i + 4
                 if (nalStart >= data.size) break
                 val nalType = data[nalStart].toInt() and 0x1F
+
+                // Saltar AUD (tipo 9) y SEI (tipo 6)
+                if (nalType == 9 || nalType == 6) {
+                    i = nalStart + 1
+                    continue
+                }
+
                 var j = nalStart + 1
                 while (j < data.size - 3) {
                     if (data[j] == 0.toByte() && data[j+1] == 0.toByte() &&
