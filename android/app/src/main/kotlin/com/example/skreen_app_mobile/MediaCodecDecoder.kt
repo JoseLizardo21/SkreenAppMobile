@@ -23,8 +23,15 @@ class MediaCodecDecoder(private val textureEntry: TextureRegistry.SurfaceTexture
         it.setDefaultBufferSize(1920, 1080)
     }
     private val surface = Surface(surfaceTexture)
+    private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
+
+    // EventChannel.EventSink.success() must run on the main thread.
+    private fun notifyVideoSizeChanged(width: Int, height: Int) {
+        mainHandler.post { onVideoSizeChanged?.invoke(width, height) }
+    }
 
     fun start() {
+        android.util.Log.i("MediaCodecDecoder", "start() called", Exception("trace"))
         running = true
         codecConfigured = false
         outputThread = Thread { runOutputLoop() }.also { it.start() }
@@ -46,20 +53,31 @@ class MediaCodecDecoder(private val textureEntry: TextureRegistry.SurfaceTexture
         try {
             val sock = Socket("127.0.0.1", 9002)
             socket = sock
+            android.util.Log.i("MediaCodecDecoder", "Connected to 127.0.0.1:9002")
             val input = sock.getInputStream()
             val lenBuf = ByteArray(4)
             while (running && !Thread.currentThread().isInterrupted) {
-                if (!readFully(input, lenBuf, 4)) break
+                if (!readFully(input, lenBuf, 4)) {
+                    android.util.Log.w("MediaCodecDecoder", "readFully(len) failed, ending input loop")
+                    break
+                }
                 val len = ((lenBuf[0].toInt() and 0xFF) shl 24) or
                           ((lenBuf[1].toInt() and 0xFF) shl 16) or
                           ((lenBuf[2].toInt() and 0xFF) shl 8)  or
                            (lenBuf[3].toInt() and 0xFF)
-                if (len <= 0 || len > 8_000_000) break
+                if (len <= 0 || len > 8_000_000) {
+                    android.util.Log.w("MediaCodecDecoder", "Invalid frame length: $len")
+                    break
+                }
                 val data = ByteArray(len)
-                if (!readFully(input, data, len)) break
+                if (!readFully(input, data, len)) {
+                    android.util.Log.w("MediaCodecDecoder", "readFully(data) failed, ending input loop")
+                    break
+                }
                 feedInputBuffer(data)
             }
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            android.util.Log.e("MediaCodecDecoder", "runInputLoop exception: $e")
         } finally {
             socket?.close()
         }
@@ -85,7 +103,7 @@ class MediaCodecDecoder(private val textureEntry: TextureRegistry.SurfaceTexture
                             android.util.Log.i("MediaCodecDecoder", "Output format: ${w}x${h}")
                             // Actualiza el buffer del surface con la resolución real
                             surfaceTexture.setDefaultBufferSize(w, h)
-                            onVideoSizeChanged?.invoke(w, h)
+                            notifyVideoSizeChanged(w, h)
                         }
                     }
                 }
@@ -99,10 +117,17 @@ class MediaCodecDecoder(private val textureEntry: TextureRegistry.SurfaceTexture
 
     private fun feedInputBuffer(data: ByteArray) {
         if (!codecConfigured) {
+            android.util.Log.d("MediaCodecDecoder", "feedInputBuffer: ${data.size} bytes, codecConfigured=false")
             val (sps, pps) = extractSPSPPS(data)
-            if (sps == null || pps == null) return
+            if (sps == null || pps == null) {
+                android.util.Log.d("MediaCodecDecoder", "No SPS/PPS in this frame yet (sps=${sps != null}, pps=${pps != null})")
+                return
+            }
 
-            val (width, height) = parseSPSDimensions(sps) ?: Pair(1920, 1080)
+            android.util.Log.d("MediaCodecDecoder", "SPS hex: ${sps.joinToString("") { "%02x".format(it) }}")
+            val parsed = parseSPSDimensions(sps)
+            android.util.Log.d("MediaCodecDecoder", "Parsed SPS dimensions: $parsed")
+            val (width, height) = parsed ?: Pair(1920, 1080)
             surfaceTexture.setDefaultBufferSize(width, height)
 
             val format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, width, height)
@@ -111,12 +136,17 @@ class MediaCodecDecoder(private val textureEntry: TextureRegistry.SurfaceTexture
             format.setByteBuffer("csd-1", java.nio.ByteBuffer.wrap(pps))
 
             val decoder = createDecoder()
-            decoder.configure(format, surface, null, 0)
+            try {
+                decoder.configure(format, surface, null, 0)
+            } catch (e: Exception) {
+                android.util.Log.e("MediaCodecDecoder", "configure() failed for ${width}x${height}: $e")
+                throw e
+            }
             decoder.start()
             codec = decoder
             codecConfigured = true
             android.util.Log.i("MediaCodecDecoder", "Decoder configurado con SPS/PPS (${width}x${height})")
-            onVideoSizeChanged?.invoke(width, height)
+            notifyVideoSizeChanged(width, height)
             // Fall through: this frame likely contains the IDR, don't discard it
         }
 
@@ -308,6 +338,7 @@ class MediaCodecDecoder(private val textureEntry: TextureRegistry.SurfaceTexture
     }
 
     fun stop() {
+        android.util.Log.i("MediaCodecDecoder", "stop() called", Exception("trace"))
         running = false
         codecConfigured = false
         inputThread?.interrupt()
