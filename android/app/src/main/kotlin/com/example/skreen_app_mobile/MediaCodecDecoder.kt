@@ -151,13 +151,16 @@ class MediaCodecDecoder(private val textureEntry: TextureRegistry.SurfaceTexture
         }
 
         val codec = this.codec ?: return
+        // Wait for a free input buffer instead of dropping the frame after a short
+        // deadline: H.264 inter-frames update only part of the picture, so a dropped
+        // frame leaves those regions stale/blurry on screen until the next keyframe —
+        // exactly the "frozen patch" artifact seen on slower devices.
         var inputIdx = -1
-        val deadline = System.nanoTime() + 20_000_000L
-        while (inputIdx < 0 && System.nanoTime() < deadline && running) {
+        while (inputIdx < 0 && running) {
             inputIdx = codec.dequeueInputBuffer(10_000)
         }
         if (inputIdx >= 0) {
-            val buf = codec.getInputBuffer(inputIdx)!!
+            val buf = codec.getInputBuffer(inputIdx) ?: return
             buf.clear()
             buf.put(data)
             codec.queueInputBuffer(inputIdx, 0, data.size, System.nanoTime() / 1000, 0)
