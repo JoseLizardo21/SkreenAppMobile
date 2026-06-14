@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import 'services/control_connection.dart';
+import 'services/webrtc_connection.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -30,14 +32,10 @@ class SkreenPage extends StatefulWidget {
 }
 
 class _SkreenPageState extends State<SkreenPage> {
-  static const _decoderChannel = MethodChannel('skreen/decoder');
-  static const _videoSizeChannel = EventChannel('skreen/video_size');
-  static const _decoderEventChannel = EventChannel('skreen/decoder_events');
-
-  int? _textureId;
   bool _isConnected = false;
   String _status = 'Disconnected';
   final ControlConnection _controlConn = ControlConnection();
+  final WebrtcConnection _webrtc = WebrtcConnection();
   double _videoWidth = 1920;
   double _videoHeight = 1080;
 
@@ -50,37 +48,35 @@ class _SkreenPageState extends State<SkreenPage> {
     super.initState();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     WakelockPlus.enable();
-    _videoSizeChannel.receiveBroadcastStream().listen((event) {
-      final w = (event['width'] as int).toDouble();
-      final h = (event['height'] as int).toDouble();
+    _webrtc.renderer.onResize = () {
+      final w = _webrtc.renderer.videoWidth.toDouble();
+      final h = _webrtc.renderer.videoHeight.toDouble();
       if (w > 0 && h > 0) setState(() { _videoWidth = w; _videoHeight = h; });
-    });
-    _decoderEventChannel.receiveBroadcastStream().listen((event) {
-      if (event == 'error' && _isConnected) _disconnect();
-    });
+    };
+    _webrtc.onConnectionState = (state) {
+      if (_isConnected &&
+          (state == RTCPeerConnectionState.RTCPeerConnectionStateFailed ||
+              state == RTCPeerConnectionState.RTCPeerConnectionStateClosed)) {
+        _disconnect();
+      }
+    };
   }
 
   Future<void> _connect() async {
-    // Limpiar cualquier decoder anterior antes de iniciar (cubre hot reload)
-    if (_textureId != null) {
-      await _decoderChannel.invokeMethod('stop').catchError((_) {});
-    }
     setState(() {
-      _textureId = null;
       _isConnected = true;
       _status = 'Connecting...';
     });
 
     try {
-      final textureId = await _decoderChannel.invokeMethod<int>('start');
+      await _webrtc.connect();
       _controlConn.onStreamStopped = _disconnect;
       await _controlConn.connect().catchError((_) {});
       setState(() {
-        _textureId = textureId;
         _status = 'Streaming';
       });
     } catch (e) {
-      debugPrint('[SkreenApp] Error starting decoder: $e');
+      debugPrint('[SkreenApp] Error starting WebRTC: $e');
       setState(() {
         _isConnected = false;
         _status = 'Error: $e';
@@ -90,9 +86,8 @@ class _SkreenPageState extends State<SkreenPage> {
 
   Future<void> _disconnect() async {
     _controlConn.disconnect();
-    await _decoderChannel.invokeMethod('stop').catchError((_) {});
+    await _webrtc.disconnect();
     setState(() {
-      _textureId = null;
       _isConnected = false;
       _status = 'Disconnected';
     });
@@ -101,7 +96,7 @@ class _SkreenPageState extends State<SkreenPage> {
   @override
   void dispose() {
     _controlConn.disconnect();
-    _decoderChannel.invokeMethod('stop');
+    _webrtc.dispose();
     super.dispose();
   }
 
@@ -111,9 +106,9 @@ class _SkreenPageState extends State<SkreenPage> {
       backgroundColor: Colors.black,
       body: Stack(
         children: [
-          // Video via MediaCodec nativo
+          // Video via WebRTC
           Positioned.fill(
-            child: _textureId != null
+            child: _isConnected
               ? LayoutBuilder(
                   builder: (context, constraints) {
                     // Área real del video respetando el aspect ratio del escritorio
@@ -171,7 +166,7 @@ class _SkreenPageState extends State<SkreenPage> {
                         child: SizedBox(
                           width: videoW,
                           height: videoH,
-                          child: Texture(textureId: _textureId!),
+                          child: RTCVideoView(_webrtc.renderer),
                         ),
                       ),
                     );
