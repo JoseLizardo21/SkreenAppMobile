@@ -1,4 +1,4 @@
-package com.example.skreen_app_mobile
+package com.skreenapp.app
 
 import android.util.DisplayMetrics
 import android.view.WindowManager
