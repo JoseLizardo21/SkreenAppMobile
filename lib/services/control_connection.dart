@@ -4,20 +4,24 @@ import 'dart:io';
 import 'dart:typed_data';
 
 class ControlConnection {
+  final String host;
+
+  ControlConnection({this.host = '127.0.0.1'});
+
   Socket? _socket;
   Socket? _statusSocket;
   StreamSubscription<List<int>>? _statusSub;
   void Function()? onStreamStopped;
 
   Future<void> connect() async {
-    _socket = await Socket.connect('127.0.0.1', 9003);
+    _socket = await Socket.connect(host, 9003);
     _socket!.setOption(SocketOption.tcpNoDelay, true);
     _connectStatus();
   }
 
   Future<void> _connectStatus() async {
     try {
-      _statusSocket = await Socket.connect('127.0.0.1', 9004);
+      _statusSocket = await Socket.connect(host, 9004);
       final buffer = StringBuffer();
       _statusSub = _statusSocket!.listen(
         (data) {
