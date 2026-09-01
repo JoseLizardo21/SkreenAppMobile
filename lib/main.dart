@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
+import 'helpers/wifi_lock_helper.dart';
 import 'models/connection_mode.dart';
 import 'screens/connection_mode_screen.dart';
 import 'services/control_connection.dart';
@@ -74,6 +75,10 @@ class _SkreenPageState extends State<SkreenPage> {
       _status = 'Connecting...';
     });
 
+    if (widget.config.mode == ConnectionMode.wifi) {
+      await WifiLockHelper.acquire();
+    }
+
     try {
       await _webrtc.connect();
       _controlConn.onStreamStopped = _disconnect;
@@ -83,6 +88,7 @@ class _SkreenPageState extends State<SkreenPage> {
       });
     } catch (e) {
       debugPrint('[SkreenApp] Error starting WebRTC: $e');
+      await WifiLockHelper.release();
       setState(() {
         _isConnected = false;
         _status = 'Error: $e';
@@ -93,6 +99,7 @@ class _SkreenPageState extends State<SkreenPage> {
   Future<void> _disconnect() async {
     _controlConn.disconnect();
     await _webrtc.disconnect();
+    await WifiLockHelper.release();
     setState(() {
       _isConnected = false;
       _status = 'Disconnected';
@@ -103,6 +110,7 @@ class _SkreenPageState extends State<SkreenPage> {
   void dispose() {
     _controlConn.disconnect();
     _webrtc.dispose();
+    WifiLockHelper.release();
     super.dispose();
   }
 
