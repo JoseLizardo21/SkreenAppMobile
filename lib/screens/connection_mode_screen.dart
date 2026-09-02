@@ -63,84 +63,119 @@ class _ConnectionModeScreenState extends State<ConnectionModeScreen> {
     final isWifi = _mode == ConnectionMode.wifi;
 
     return Scaffold(
+      backgroundColor: Colors.black,
       body: SafeArea(
-        child: Center(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.cast_connected, size: 72, color: Colors.deepPurple),
-                const SizedBox(height: 16),
-                const Text(
-                  'Skreen App',
-                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  '¿Cómo quieres conectarte?',
-                  style: TextStyle(fontSize: 16, color: Colors.black54),
-                ),
-                const SizedBox(height: 24),
-                SegmentedButton<ConnectionMode>(
-                  segments: const [
-                    ButtonSegment(
-                      value: ConnectionMode.cable,
-                      label: Text('Cable'),
-                      icon: Icon(Icons.usb),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            return SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                child: Column(
+                  mainAxisSize: MainAxisSize.max,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.cast_connected, size: 72, color: Colors.deepPurpleAccent),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'Skreen App',
+                      style: TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
                     ),
-                    ButtonSegment(
-                      value: ConnectionMode.wifi,
-                      label: Text('WiFi'),
-                      icon: Icon(Icons.wifi),
+                    const SizedBox(height: 8),
+                    const Text(
+                      '¿Cómo quieres conectarte?',
+                      style: TextStyle(fontSize: 16, color: Colors.white70),
+                    ),
+                    const SizedBox(height: 24),
+                    SegmentedButton<ConnectionMode>(
+                      style: SegmentedButton.styleFrom(
+                        backgroundColor: Colors.white10,
+                        foregroundColor: Colors.white70,
+                        selectedBackgroundColor: Colors.deepPurple,
+                        selectedForegroundColor: Colors.white,
+                        side: const BorderSide(color: Colors.white24),
+                      ),
+                      segments: const [
+                        ButtonSegment(
+                          value: ConnectionMode.cable,
+                          label: Text('Cable'),
+                          icon: Icon(Icons.usb),
+                        ),
+                        ButtonSegment(
+                          value: ConnectionMode.wifi,
+                          label: Text('WiFi'),
+                          icon: Icon(Icons.wifi),
+                        ),
+                      ],
+                      selected: {_mode},
+                      onSelectionChanged: (selection) {
+                        setState(() {
+                          _mode = selection.first;
+                          _ipError = null;
+                        });
+                      },
+                    ),
+                    if (isWifi) ...[
+                      const SizedBox(height: 24),
+                      const Text(
+                        'Ingresa la IP que muestra la app de escritorio en tu misma red WiFi',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontSize: 13, color: Colors.white70),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: _ipController,
+                        keyboardType: const TextInputType.numberWithOptions(),
+                        inputFormatters: [
+                          FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
+                        ],
+                        style: const TextStyle(color: Colors.white),
+                        cursorColor: Colors.deepPurpleAccent,
+                        decoration: InputDecoration(
+                          labelText: 'IP de la PC',
+                          labelStyle: const TextStyle(color: Colors.white70),
+                          hintText: '192.168.1.34',
+                          hintStyle: const TextStyle(color: Colors.white38),
+                          filled: true,
+                          fillColor: Colors.white10,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: const BorderSide(color: Colors.white24),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: const BorderSide(color: Colors.white24),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: const BorderSide(color: Colors.deepPurpleAccent),
+                          ),
+                          errorText: _ipError,
+                        ),
+                        onChanged: (_) {
+                          if (_ipError != null) setState(() => _ipError = null);
+                        },
+                      ),
+                    ],
+                    const SizedBox(height: 32),
+                    ElevatedButton(
+                      onPressed: _continue,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.deepPurple,
+                        foregroundColor: Colors.white,
+                        minimumSize: const Size(double.infinity, 50),
+                      ),
+                      child: const Text('Continuar', style: TextStyle(fontSize: 16)),
                     ),
                   ],
-                  selected: {_mode},
-                  onSelectionChanged: (selection) {
-                    setState(() {
-                      _mode = selection.first;
-                      _ipError = null;
-                    });
-                  },
                 ),
-                if (isWifi) ...[
-                  const SizedBox(height: 24),
-                  const Text(
-                    'Ingresa la IP que muestra la app de escritorio en tu misma red WiFi',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 13, color: Colors.black54),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _ipController,
-                    keyboardType: const TextInputType.numberWithOptions(),
-                    inputFormatters: [
-                      FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
-                    ],
-                    decoration: InputDecoration(
-                      labelText: 'IP de la PC',
-                      hintText: '192.168.1.34',
-                      border: const OutlineInputBorder(),
-                      errorText: _ipError,
-                    ),
-                    onChanged: (_) {
-                      if (_ipError != null) setState(() => _ipError = null);
-                    },
-                  ),
-                ],
-                const SizedBox(height: 32),
-                ElevatedButton(
-                  onPressed: _continue,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.deepPurple,
-                    foregroundColor: Colors.white,
-                    minimumSize: const Size(double.infinity, 50),
-                  ),
-                  child: const Text('Continuar', style: TextStyle(fontSize: 16)),
-                ),
-              ],
-            ),
-          ),
+              ),
+            );
+          },
         ),
       ),
     );
