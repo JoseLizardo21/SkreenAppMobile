@@ -111,6 +111,7 @@ class _SkreenPageState extends State<SkreenPage> {
     _controlConn.disconnect();
     _webrtc.dispose();
     WifiLockHelper.release();
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     super.dispose();
   }
 
@@ -187,6 +188,22 @@ class _SkreenPageState extends State<SkreenPage> {
                   },
                 )
               : const SizedBox.shrink(),
+          ),
+
+          // Botón para volver a la selección de modo de conexión
+          Positioned(
+            top: 8,
+            left: 8,
+            child: SafeArea(
+              child: Material(
+                color: Colors.black45,
+                shape: const CircleBorder(),
+                child: IconButton(
+                  icon: const Icon(Icons.arrow_back, color: Colors.white),
+                  onPressed: () => Navigator.of(context).maybePop(),
+                ),
+              ),
+            ),
           ),
 
           // Texto de estado cuando no está conectado
