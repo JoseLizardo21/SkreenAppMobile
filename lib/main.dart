@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
+import 'helpers/wifi_lock_helper.dart';
+import 'models/connection_mode.dart';
+import 'screens/connection_mode_screen.dart';
 import 'services/control_connection.dart';
 import 'services/webrtc_connection.dart';
 
@@ -19,13 +22,15 @@ class MyApp extends StatelessWidget {
       title: 'Skreen App',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple)),
-      home: const SkreenPage(),
+      home: const ConnectionModeScreen(),
     );
   }
 }
 
 class SkreenPage extends StatefulWidget {
-  const SkreenPage({super.key});
+  final ConnectionConfig config;
+
+  const SkreenPage({super.key, required this.config});
 
   @override
   State<SkreenPage> createState() => _SkreenPageState();
@@ -34,8 +39,10 @@ class SkreenPage extends StatefulWidget {
 class _SkreenPageState extends State<SkreenPage> {
   bool _isConnected = false;
   String _status = 'Disconnected';
-  final ControlConnection _controlConn = ControlConnection();
-  final WebrtcConnection _webrtc = WebrtcConnection();
+  late final ControlConnection _controlConn =
+      ControlConnection(host: widget.config.host);
+  late final WebrtcConnection _webrtc =
+      WebrtcConnection(host: widget.config.host);
   double _videoWidth = 1920;
   double _videoHeight = 1080;
 
@@ -68,6 +75,10 @@ class _SkreenPageState extends State<SkreenPage> {
       _status = 'Connecting...';
     });
 
+    if (widget.config.mode == ConnectionMode.wifi) {
+      await WifiLockHelper.acquire();
+    }
+
     try {
       await _webrtc.connect();
       _controlConn.onStreamStopped = _disconnect;
@@ -77,6 +88,7 @@ class _SkreenPageState extends State<SkreenPage> {
       });
     } catch (e) {
       debugPrint('[SkreenApp] Error starting WebRTC: $e');
+      await WifiLockHelper.release();
       setState(() {
         _isConnected = false;
         _status = 'Error: $e';
@@ -87,6 +99,7 @@ class _SkreenPageState extends State<SkreenPage> {
   Future<void> _disconnect() async {
     _controlConn.disconnect();
     await _webrtc.disconnect();
+    await WifiLockHelper.release();
     setState(() {
       _isConnected = false;
       _status = 'Disconnected';
@@ -97,6 +110,8 @@ class _SkreenPageState extends State<SkreenPage> {
   void dispose() {
     _controlConn.disconnect();
     _webrtc.dispose();
+    WifiLockHelper.release();
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     super.dispose();
   }
 
@@ -173,6 +188,22 @@ class _SkreenPageState extends State<SkreenPage> {
                   },
                 )
               : const SizedBox.shrink(),
+          ),
+
+          // Botón para volver a la selección de modo de conexión
+          Positioned(
+            top: 8,
+            left: 8,
+            child: SafeArea(
+              child: Material(
+                color: Colors.black45,
+                shape: const CircleBorder(),
+                child: IconButton(
+                  icon: const Icon(Icons.arrow_back, color: Colors.white),
+                  onPressed: () => Navigator.of(context).maybePop(),
+                ),
+              ),
+            ),
           ),
 
           // Texto de estado cuando no está conectado

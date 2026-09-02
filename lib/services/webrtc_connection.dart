@@ -5,6 +5,10 @@ import 'dart:io';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 
 class WebrtcConnection {
+  final String host;
+
+  WebrtcConnection({this.host = '127.0.0.1'});
+
   Socket? _signalingSocket;
   StreamSubscription<List<int>>? _signalingSub;
   RTCPeerConnection? _pc;
@@ -19,7 +23,9 @@ class WebrtcConnection {
       _rendererInitialized = true;
     }
 
-    // Sin STUN/TURN: todo el tráfico va por el túnel adb (loopback), forzado a ICE-TCP
+    // Sin STUN/TURN: en cable todo el tráfico va por el túnel adb (loopback,
+    // forzado a ICE-TCP); en WiFi es LAN directa entre dispositivos, sin NAT
+    // de por medio, así que tampoco hace falta STUN/TURN.
     _pc = await createPeerConnection({'iceServers': <Map<String, dynamic>>[]});
 
     _pc!.onTrack = (RTCTrackEvent event) {
@@ -40,7 +46,7 @@ class WebrtcConnection {
       onConnectionState?.call(state);
     };
 
-    _signalingSocket = await Socket.connect('127.0.0.1', 9002);
+    _signalingSocket = await Socket.connect(host, 9002);
     _signalingSocket!.setOption(SocketOption.tcpNoDelay, true);
 
     final buffer = StringBuffer();
