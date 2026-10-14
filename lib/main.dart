@@ -8,6 +8,7 @@ import 'screens/connection_mode_screen.dart';
 import 'services/control_connection.dart';
 import 'services/webrtc_connection.dart';
 import 'theme/app_colors.dart';
+import 'theme/app_page_transitions.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -22,7 +23,15 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: 'Skreen App',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(colorScheme: ColorScheme.fromSeed(seedColor: AppColors.primary)),
+      theme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(seedColor: AppColors.primary),
+        pageTransitionsTheme: const PageTransitionsTheme(
+          builders: {
+            TargetPlatform.android: FadeScalePageTransitionsBuilder(),
+            TargetPlatform.iOS: FadeScalePageTransitionsBuilder(),
+          },
+        ),
+      ),
       home: const ConnectionModeScreen(),
     );
   }
@@ -51,10 +60,11 @@ class _SkreenPageState extends State<SkreenPage> {
   final Map<int, Offset> _activePointers = {};
   bool _scrollMode = false;
 
+  bool _immersiveScheduled = false;
+
   @override
   void initState() {
     super.initState();
-    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     WakelockPlus.enable();
     _webrtc.renderer.onResize = () {
       final w = _webrtc.renderer.videoWidth.toDouble();
@@ -68,6 +78,33 @@ class _SkreenPageState extends State<SkreenPage> {
         _disconnect();
       }
     };
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_immersiveScheduled) return;
+    _immersiveScheduled = true;
+
+    // Hide system bars only once the enter transition finishes, so the
+    // layout doesn't jump mid-animation
+    final animation = ModalRoute.of(context)?.animation;
+    if (animation == null || animation.isCompleted) {
+      _enterImmersive();
+      return;
+    }
+    void listener(AnimationStatus status) {
+      if (status == AnimationStatus.completed) {
+        animation.removeStatusListener(listener);
+        _enterImmersive();
+      }
+    }
+    animation.addStatusListener(listener);
+  }
+
+  void _enterImmersive() {
+    if (!mounted) return;
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
   }
 
   Future<void> _connect() async {
@@ -118,128 +155,134 @@ class _SkreenPageState extends State<SkreenPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      body: Stack(
-        children: [
-          // Video via WebRTC
-          Positioned.fill(
-            child: _isConnected
-              ? LayoutBuilder(
-                  builder: (context, constraints) {
-                    // Actual video area, preserving the desktop aspect ratio
-                    final videoAspect = _videoWidth / _videoHeight;
-                    final screenAspect = constraints.maxWidth / constraints.maxHeight;
-                    final double videoW, videoH;
-                    if (screenAspect > videoAspect) {
-                      // Wider screen: pillarbox (side bars)
-                      videoH = constraints.maxHeight;
-                      videoW = videoH * videoAspect;
-                    } else {
-                      // Taller screen: letterbox (top/bottom bars)
-                      videoW = constraints.maxWidth;
-                      videoH = videoW / videoAspect;
-                    }
-                    return Listener(
-                      onPointerDown: (e) {
-                        _activePointers[e.pointer] = e.localPosition;
-                        if (_activePointers.length == 1) {
-                          _scrollMode = false;
-                          final nx = (e.localPosition.dx - (constraints.maxWidth - videoW) / 2) / videoW;
-                          final ny = (e.localPosition.dy - (constraints.maxHeight - videoH) / 2) / videoH;
-                          if (nx >= 0 && nx <= 1 && ny >= 0 && ny <= 1) {
-                            _controlConn.sendEvent(1, 0, nx, ny); // touch down
+    return PopScope(
+      // Restore system bars as soon as the exit transition starts
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+      },
+      child: Scaffold(
+        backgroundColor: Colors.black,
+        body: Stack(
+          children: [
+            // Video via WebRTC
+            Positioned.fill(
+              child: _isConnected
+                ? LayoutBuilder(
+                    builder: (context, constraints) {
+                      // Actual video area, preserving the desktop aspect ratio
+                      final videoAspect = _videoWidth / _videoHeight;
+                      final screenAspect = constraints.maxWidth / constraints.maxHeight;
+                      final double videoW, videoH;
+                      if (screenAspect > videoAspect) {
+                        // Wider screen: pillarbox (side bars)
+                        videoH = constraints.maxHeight;
+                        videoW = videoH * videoAspect;
+                      } else {
+                        // Taller screen: letterbox (top/bottom bars)
+                        videoW = constraints.maxWidth;
+                        videoH = videoW / videoAspect;
+                      }
+                      return Listener(
+                        onPointerDown: (e) {
+                          _activePointers[e.pointer] = e.localPosition;
+                          if (_activePointers.length == 1) {
+                            _scrollMode = false;
+                            final nx = (e.localPosition.dx - (constraints.maxWidth - videoW) / 2) / videoW;
+                            final ny = (e.localPosition.dy - (constraints.maxHeight - videoH) / 2) / videoH;
+                            if (nx >= 0 && nx <= 1 && ny >= 0 && ny <= 1) {
+                              _controlConn.sendEvent(1, 0, nx, ny); // touch down
+                            }
+                          } else if (_activePointers.length == 2 && !_scrollMode) {
+                            _scrollMode = true;
+                            _controlConn.sendEvent(2, 0, 0, 0); // cancel pending tap/drag
                           }
-                        } else if (_activePointers.length == 2 && !_scrollMode) {
-                          _scrollMode = true;
-                          _controlConn.sendEvent(2, 0, 0, 0); // cancel pending tap/drag
-                        }
-                      },
-                      onPointerMove: (e) {
-                        final prev = _activePointers[e.pointer];
-                        _activePointers[e.pointer] = e.localPosition;
-                        if (!_scrollMode && _activePointers.length == 1) {
-                          final nx = (e.localPosition.dx - (constraints.maxWidth - videoW) / 2) / videoW;
-                          final ny = (e.localPosition.dy - (constraints.maxHeight - videoH) / 2) / videoH;
-                          _controlConn.sendEvent(0, 0, nx.clamp(0.0, 1.0), ny.clamp(0.0, 1.0)); // move
-                        } else if (_scrollMode && _activePointers.length >= 2 && prev != null) {
-                          final dy = (e.localPosition.dy - prev.dy) / videoH;
-                          if (dy.abs() > 0.001) {
-                            _controlConn.sendEvent(3, 0, 0, dy); // scroll
+                        },
+                        onPointerMove: (e) {
+                          final prev = _activePointers[e.pointer];
+                          _activePointers[e.pointer] = e.localPosition;
+                          if (!_scrollMode && _activePointers.length == 1) {
+                            final nx = (e.localPosition.dx - (constraints.maxWidth - videoW) / 2) / videoW;
+                            final ny = (e.localPosition.dy - (constraints.maxHeight - videoH) / 2) / videoH;
+                            _controlConn.sendEvent(0, 0, nx.clamp(0.0, 1.0), ny.clamp(0.0, 1.0)); // move
+                          } else if (_scrollMode && _activePointers.length >= 2 && prev != null) {
+                            final dy = (e.localPosition.dy - prev.dy) / videoH;
+                            if (dy.abs() > 0.001) {
+                              _controlConn.sendEvent(3, 0, 0, dy); // scroll
+                            }
                           }
-                        }
-                      },
-                      onPointerUp: (e) {
-                        _activePointers.remove(e.pointer);
-                        if (_activePointers.isEmpty) {
-                          if (!_scrollMode) {
-                            _controlConn.sendEvent(2, 0, 0, 0); // touch up
+                        },
+                        onPointerUp: (e) {
+                          _activePointers.remove(e.pointer);
+                          if (_activePointers.isEmpty) {
+                            if (!_scrollMode) {
+                              _controlConn.sendEvent(2, 0, 0, 0); // touch up
+                            }
+                            _scrollMode = false;
                           }
-                          _scrollMode = false;
-                        }
-                      },
-                      child: Center(
-                        child: SizedBox(
-                          width: videoW,
-                          height: videoH,
-                          child: RTCVideoView(_webrtc.renderer),
+                        },
+                        child: Center(
+                          child: SizedBox(
+                            width: videoW,
+                            height: videoH,
+                            child: RTCVideoView(_webrtc.renderer),
+                          ),
                         ),
-                      ),
-                    );
-                  },
-                )
-              : const SizedBox.shrink(),
-          ),
+                      );
+                    },
+                  )
+                : const SizedBox.shrink(),
+            ),
 
-          // Button to go back to connection mode selection
-          Positioned(
-            top: 8,
-            left: 8,
-            child: SafeArea(
-              child: Material(
-                color: Colors.black45,
-                shape: const CircleBorder(),
-                child: IconButton(
-                  icon: const Icon(Icons.arrow_back, color: Colors.white),
-                  onPressed: () => Navigator.of(context).maybePop(),
+            // Button to go back to connection mode selection
+            Positioned(
+              top: 8,
+              left: 8,
+              child: SafeArea(
+                child: Material(
+                  color: Colors.black45,
+                  shape: const CircleBorder(),
+                  child: IconButton(
+                    icon: const Icon(Icons.arrow_back, color: Colors.white),
+                    onPressed: () => Navigator.of(context).maybePop(),
+                  ),
                 ),
               ),
             ),
-          ),
 
-          // Status text when not connected
-          if (!_isConnected)
-            Center(
-              child: Text(
-                _status,
-                style: const TextStyle(color: Colors.white, fontSize: 18),
-              ),
-            ),
-
-          // Connect button
-          if (!_isConnected)
-            Positioned(
-              bottom: 40, left: 20, right: 20,
-              child: ElevatedButton(
-                onPressed: _connect,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.primary,
-                  foregroundColor: AppColors.onPrimary,
-                  minimumSize: const Size(double.infinity, 50),
+            // Status text when not connected
+            if (!_isConnected)
+              Center(
+                child: Text(
+                  _status,
+                  style: const TextStyle(color: Colors.white, fontSize: 18),
                 ),
-                child: const Text('Connect', style: TextStyle(fontSize: 16)),
               ),
-            )
-          else
-            Positioned(
-              bottom: 20, right: 20,
-              child: FloatingActionButton(
-                onPressed: _disconnect,
-                backgroundColor: Colors.red,
-                child: const Icon(Icons.close),
+
+            // Connect button
+            if (!_isConnected)
+              Positioned(
+                bottom: 40, left: 20, right: 20,
+                child: ElevatedButton(
+                  onPressed: _connect,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    foregroundColor: AppColors.onPrimary,
+                    minimumSize: const Size(double.infinity, 50),
+                  ),
+                  child: const Text('Connect', style: TextStyle(fontSize: 16)),
+                ),
+              )
+            else
+              Positioned(
+                bottom: 20, right: 20,
+                child: FloatingActionButton(
+                  onPressed: _disconnect,
+                  backgroundColor: Colors.red,
+                  child: const Icon(Icons.close),
+                ),
               ),
-            ),
-        ],
+          ],
+        ),
       ),
     );
   }
