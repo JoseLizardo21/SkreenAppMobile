@@ -23,9 +23,9 @@ class WebrtcConnection {
       _rendererInitialized = true;
     }
 
-    // Sin STUN/TURN: en cable todo el tráfico va por el túnel adb (loopback,
-    // forzado a ICE-TCP); en WiFi es LAN directa entre dispositivos, sin NAT
-    // de por medio, así que tampoco hace falta STUN/TURN.
+    // No STUN/TURN: over cable all traffic goes through the adb tunnel
+    // (loopback, forced to ICE-TCP); over WiFi it's a direct LAN link between
+    // devices with no NAT in between, so STUN/TURN isn't needed either.
     _pc = await createPeerConnection({'iceServers': <Map<String, dynamic>>[]});
 
     _pc!.onTrack = (RTCTrackEvent event) {

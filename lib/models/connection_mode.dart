@@ -2,7 +2,7 @@ enum ConnectionMode { cable, wifi }
 
 class ConnectionConfig {
   final ConnectionMode mode;
-  final String host; // IP de la PC; en modo cable siempre '127.0.0.1' (túnel adb)
+  final String host; // PC IP; in cable mode always '127.0.0.1' (adb tunnel)
 
   const ConnectionConfig({required this.mode, required this.host});
 

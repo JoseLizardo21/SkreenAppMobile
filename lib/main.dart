@@ -127,16 +127,16 @@ class _SkreenPageState extends State<SkreenPage> {
             child: _isConnected
               ? LayoutBuilder(
                   builder: (context, constraints) {
-                    // Área real del video respetando el aspect ratio del escritorio
+                    // Actual video area, preserving the desktop aspect ratio
                     final videoAspect = _videoWidth / _videoHeight;
                     final screenAspect = constraints.maxWidth / constraints.maxHeight;
                     final double videoW, videoH;
                     if (screenAspect > videoAspect) {
-                      // Pantalla más ancha: pillarbox (barras laterales)
+                      // Wider screen: pillarbox (side bars)
                       videoH = constraints.maxHeight;
                       videoW = videoH * videoAspect;
                     } else {
-                      // Pantalla más alta: letterbox (barras arriba/abajo)
+                      // Taller screen: letterbox (top/bottom bars)
                       videoW = constraints.maxWidth;
                       videoH = videoW / videoAspect;
                     }
@@ -191,7 +191,7 @@ class _SkreenPageState extends State<SkreenPage> {
               : const SizedBox.shrink(),
           ),
 
-          // Botón para volver a la selección de modo de conexión
+          // Button to go back to connection mode selection
           Positioned(
             top: 8,
             left: 8,
@@ -207,7 +207,7 @@ class _SkreenPageState extends State<SkreenPage> {
             ),
           ),
 
-          // Texto de estado cuando no está conectado
+          // Status text when not connected
           if (!_isConnected)
             Center(
               child: Text(
@@ -216,7 +216,7 @@ class _SkreenPageState extends State<SkreenPage> {
               ),
             ),
 
-          // Botón conectar
+          // Connect button
           if (!_isConnected)
             Positioned(
               bottom: 40, left: 20, right: 20,

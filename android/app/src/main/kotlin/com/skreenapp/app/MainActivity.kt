@@ -13,9 +13,9 @@ class MainActivity : FlutterActivity() {
     private val SCREEN_CHANNEL = "com.yourapp/screen_info"
     private val WIFI_LOCK_CHANNEL = "com.skreenapp.app/wifi_lock"
 
-    // Sin este lock, el radio WiFi entra en modo de ahorro de energía entre
-    // beacons cuando la pantalla no tiene foco de touch, introduciendo cortes
-    // periódicos en el streaming aunque la señal sea excelente.
+    // Without this lock, the WiFi radio enters power-save mode between
+    // beacons when the screen has no touch focus, causing periodic
+    // stutters in the stream even when the signal is excellent.
     private var wifiLock: WifiManager.WifiLock? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {

@@ -1,9 +1,9 @@
 import 'package:flutter/services.dart';
 
-/// Mantiene el radio WiFi fuera de modo de ahorro de energía mientras se
-/// transmite: sin esto, Android duerme el chip WiFi entre beacons, lo que
-/// se ve como micro-cortes periódicos en el video incluso con buena señal.
-/// Solo aplica al modo WiFi (en cable el video no viaja por el radio WiFi).
+/// Keeps the WiFi radio out of power-save mode while streaming: without
+/// this, Android sleeps the WiFi chip between beacons, which shows up as
+/// periodic micro-stutters in the video even with good signal.
+/// Only applies to WiFi mode (over cable the video doesn't use the WiFi radio).
 class WifiLockHelper {
   static const _platform = MethodChannel('com.skreenapp.app/wifi_lock');
 
@@ -11,8 +11,8 @@ class WifiLockHelper {
     try {
       await _platform.invokeMethod('acquire');
     } on PlatformException catch (_) {
-      // No crítico: si falla, el streaming sigue funcionando, solo puede
-      // haber más cortes de los esperados.
+      // Not critical: if it fails, streaming still works, there may just
+      // be more stutters than expected.
     }
   }
 

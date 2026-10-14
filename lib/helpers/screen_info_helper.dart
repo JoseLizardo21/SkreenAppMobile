@@ -13,8 +13,8 @@ class ScreenInfoHelper {
         'height': result['height'] as int,
       };
     } on PlatformException catch (e) {
-      print("Error obteniendo resolución: ${e.message}");
-      // Fallback a physicalSize
+      print("Error getting resolution: ${e.message}");
+      // Fallback to physicalSize
       final ui.FlutterView view = WidgetsBinding.instance.platformDispatcher.views.first;
       final ui.Size physicalSize = view.physicalSize;
       return {

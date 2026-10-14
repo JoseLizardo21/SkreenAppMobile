@@ -48,7 +48,7 @@ class _ConnectionModeScreenState extends State<ConnectionModeScreen> {
 
     final ip = _ipController.text.trim();
     if (!_isValidIp(ip)) {
-      setState(() => _ipError = 'Ingresa una IP válida (ej. 192.168.1.34)');
+      setState(() => _ipError = 'Enter a valid IP (e.g. 192.168.1.34)');
       return;
     }
 
@@ -88,7 +88,7 @@ class _ConnectionModeScreenState extends State<ConnectionModeScreen> {
                     ),
                     const SizedBox(height: 8),
                     const Text(
-                      '¿Cómo quieres conectarte?',
+                      'How do you want to connect?',
                       style: TextStyle(fontSize: 16, color: Colors.white70),
                     ),
                     const SizedBox(height: 24),
@@ -123,7 +123,7 @@ class _ConnectionModeScreenState extends State<ConnectionModeScreen> {
                     if (isWifi) ...[
                       const SizedBox(height: 24),
                       const Text(
-                        'Ingresa la IP que muestra la app de escritorio en tu misma red WiFi',
+                        'Enter the IP shown by the desktop app on the same WiFi network',
                         textAlign: TextAlign.center,
                         style: TextStyle(fontSize: 13, color: Colors.white70),
                       ),
@@ -137,7 +137,7 @@ class _ConnectionModeScreenState extends State<ConnectionModeScreen> {
                         style: const TextStyle(color: Colors.white),
                         cursorColor: AppColors.primary,
                         decoration: InputDecoration(
-                          labelText: 'IP de la PC',
+                          labelText: 'PC IP address',
                           labelStyle: const TextStyle(color: Colors.white70),
                           hintText: '192.168.1.34',
                           hintStyle: const TextStyle(color: Colors.white38),
@@ -170,7 +170,7 @@ class _ConnectionModeScreenState extends State<ConnectionModeScreen> {
                         foregroundColor: AppColors.onPrimary,
                         minimumSize: const Size(double.infinity, 50),
                       ),
-                      child: const Text('Continuar', style: TextStyle(fontSize: 16)),
+                      child: const Text('Continue', style: TextStyle(fontSize: 16)),
                     ),
                   ],
                 ),
