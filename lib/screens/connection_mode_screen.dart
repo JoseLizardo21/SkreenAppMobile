@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../main.dart';
 import '../models/connection_mode.dart';
+import '../theme/app_colors.dart';
 
 class ConnectionModeScreen extends StatefulWidget {
   const ConnectionModeScreen({super.key});
@@ -75,7 +76,7 @@ class _ConnectionModeScreenState extends State<ConnectionModeScreen> {
                   mainAxisSize: MainAxisSize.max,
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const Icon(Icons.cast_connected, size: 72, color: Colors.deepPurpleAccent),
+                    const Icon(Icons.cast_connected, size: 72, color: AppColors.primary),
                     const SizedBox(height: 16),
                     const Text(
                       'Skreen App',
@@ -95,8 +96,8 @@ class _ConnectionModeScreenState extends State<ConnectionModeScreen> {
                       style: SegmentedButton.styleFrom(
                         backgroundColor: Colors.white10,
                         foregroundColor: Colors.white70,
-                        selectedBackgroundColor: Colors.deepPurple,
-                        selectedForegroundColor: Colors.white,
+                        selectedBackgroundColor: AppColors.primary,
+                        selectedForegroundColor: AppColors.onPrimary,
                         side: const BorderSide(color: Colors.white24),
                       ),
                       segments: const [
@@ -134,7 +135,7 @@ class _ConnectionModeScreenState extends State<ConnectionModeScreen> {
                           FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
                         ],
                         style: const TextStyle(color: Colors.white),
-                        cursorColor: Colors.deepPurpleAccent,
+                        cursorColor: AppColors.primary,
                         decoration: InputDecoration(
                           labelText: 'IP de la PC',
                           labelStyle: const TextStyle(color: Colors.white70),
@@ -152,7 +153,7 @@ class _ConnectionModeScreenState extends State<ConnectionModeScreen> {
                           ),
                           focusedBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(8),
-                            borderSide: const BorderSide(color: Colors.deepPurpleAccent),
+                            borderSide: const BorderSide(color: AppColors.primary),
                           ),
                           errorText: _ipError,
                         ),
@@ -165,8 +166,8 @@ class _ConnectionModeScreenState extends State<ConnectionModeScreen> {
                     ElevatedButton(
                       onPressed: _continue,
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.deepPurple,
-                        foregroundColor: Colors.white,
+                        backgroundColor: AppColors.primary,
+                        foregroundColor: AppColors.onPrimary,
                         minimumSize: const Size(double.infinity, 50),
                       ),
                       child: const Text('Continuar', style: TextStyle(fontSize: 16)),

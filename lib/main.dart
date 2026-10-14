@@ -7,6 +7,7 @@ import 'models/connection_mode.dart';
 import 'screens/connection_mode_screen.dart';
 import 'services/control_connection.dart';
 import 'services/webrtc_connection.dart';
+import 'theme/app_colors.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -21,7 +22,7 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: 'Skreen App',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple)),
+      theme: ThemeData(colorScheme: ColorScheme.fromSeed(seedColor: AppColors.primary)),
       home: const ConnectionModeScreen(),
     );
   }
@@ -222,8 +223,8 @@ class _SkreenPageState extends State<SkreenPage> {
               child: ElevatedButton(
                 onPressed: _connect,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.deepPurple,
-                  foregroundColor: Colors.white,
+                  backgroundColor: AppColors.primary,
+                  foregroundColor: AppColors.onPrimary,
                   minimumSize: const Size(double.infinity, 50),
                 ),
                 child: const Text('Connect', style: TextStyle(fontSize: 16)),
