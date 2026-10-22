@@ -95,7 +95,7 @@ class _ConnectionModeScreenState extends State<ConnectionModeScreen> {
                         const Icon(Icons.cast_connected, size: 72, color: AppColors.primary),
                         const SizedBox(height: 16),
                         const Text(
-                          'Skreen App',
+                          'SkreenApp',
                           style: TextStyle(
                             fontSize: 22,
                             fontWeight: FontWeight.bold,
